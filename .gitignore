@@ -87,3 +87,9 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# CLion/PyCharm
+.idea/
+
+# 3rd party
+ansi2html/
