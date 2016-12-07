@@ -480,16 +480,17 @@ def main():
         exit( 1 )
 
     configDir = args.config_dir
-    filename_tagsJson = os.path.join( configDir, args.tags )
-    filename_commitsJson = os.path.join( configDir, args.commits )
-    filename_authorsJson = os.path.join( configDir, args.authors )
-    filename_pathsJson = os.path.join( configDir, args.paths_filename )
+    filepath_tagsJson = os.path.join( configDir, args.tags )
+    filepath_commitsJson = os.path.join( configDir, args.commits )
+    filepath_authorsJson = os.path.join( configDir, args.authors )
+    filepath_pathsJson = os.path.join( configDir, args.paths_filename )
 
     repositoryDir = args.repository
     branch = args.branch
 
-    if os.path.isfile( filename_pathsJson ):
-        allPaths = json.load( open( filename_pathsJson, 'r' ) )
+    if os.path.isfile( filepath_pathsJson ):
+        allPaths = json.load( open( filepath_pathsJson, 'r' ) )
+        allPaths = map( lambda path: os.path.join( repositoryDir, path ), allPaths )
     else:
         allPaths = []
     allPaths.extend( args.paths )
@@ -502,22 +503,19 @@ def main():
             print( 'Error: %s is not a valid path.' % path )
             exit( 1 )
 
-    if os.path.isfile( filename_tagsJson ):
-        global_allTags = json.load( open( filename_tagsJson, 'r' ) )
+    if os.path.isfile( filepath_tagsJson ):
+        global_allTags = json.load( open( filepath_tagsJson, 'r' ) )
     else:
-        print( 'Warning: %s missing' % filename_tagsJson )
         global_allTags = []
 
-    if os.path.isfile( filename_authorsJson ):
-        allAuthorsHash = json.load( open( filename_authorsJson, 'r' ) )
+    if os.path.isfile( filepath_authorsJson ):
+        allAuthorsHash = json.load( open( filepath_authorsJson, 'r' ) )
     else:
-        print( 'Warning: %s missing' % filename_authorsJson )
         allAuthorsHash = {}
 
-    if os.path.isfile( filename_commitsJson ):
-        allTagsPerCommitHash = json.load( open( filename_commitsJson, 'r' ) )
+    if os.path.isfile( filepath_commitsJson ):
+        allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ) )
     else:
-        print( 'Warning: %s missing' % filename_commitsJson )
         allTagsPerCommitHash = {}
 
     ui_app = QtWidgets.QApplication( [] )
@@ -554,9 +552,9 @@ def main():
             global_allCommits.append( commit )
             global_allCommitsHash[commitHash] = commit
             commitCounter += 1
-    if os.path.isfile( filename_authorsJson ):
+    if os.path.isfile( filepath_authorsJson ):
         for author in missingAuthors:
-            print( 'Warning: author "%s" missing in %s' % (author, filename_authorsJson) )
+            print( 'Warning: author "%s" missing in %s' % (author, filepath_authorsJson) )
     allAuthors = sorted( list( allAuthors ) )
 
     # reading commits (2/3)...
@@ -781,7 +779,11 @@ def main():
     for commit in global_allCommits:
         if commit.tags:
             allTagsPerCommitHash[commit.commitHash] = commit.tags
-    json.dump( allTagsPerCommitHash, open( filename_commitsJson, 'w' ), indent=2 )
+    if allTagsPerCommitHash:
+        json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
+    else:
+        if os.path.isfile( filepath_commitsJson ):
+            os.remove( filepath_commitsJson )
 
 if __name__ == '__main__':
     main()
