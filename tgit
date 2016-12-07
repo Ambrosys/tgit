@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
+import site
+import os
+site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
+
 from PyQt5 import QtWidgets, QtGui, QtCore
 import subprocess
-import os
-import site
-site.addsitedir(  'ansi2html' )
 import ansi2html
 import threading
 import tempfile
@@ -12,13 +13,13 @@ import json
 import collections
 import datetime
 import re
+import argparse
 
-repository = '..' # '%s/src/tc-supertoll' % os.getenv('HOME')
-branch = 'master'
+repositoryDir = None
+branch = None
 
-# both variables should be equal (the first is for git commands, the second for internal filters)
-includeDirectories = ['SuperToll', 'CMake']
-includeFiles = ['CMakeLists.txt']
+includeDirectories = []
+includeFiles = []
 
 treeIndex_index = 0
 treeIndex_commit = 1
@@ -56,11 +57,13 @@ class CommitFile:
         self.status = status
 
     def addNumstat( self, added, removed ):
+        if added == '-' and removed == '-': # numstat calculation failed, may happen...
+            return
         try:
             self.added += int( added )
             self.removed += int( removed )
         except ValueError:
-            print( 'Warning: added is "%s" and removed is "%s"' % (added, removed) )
+            print( 'Warning: numstat for %s is "%s %s"' % (self.name, added, removed) )
 
 class Commit:
     def __init__( self, index, commitHash, parents, author, email, date, message ):
@@ -128,15 +131,15 @@ class Commit:
         return self.date.strftime( '%Y-%m-%d %H:%M:%S' )
 
 def diff_nonblocking( commit, file ):
-    file1content = call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=repository )
-    file2content = call( ['git', 'show', '%s:%s' % (commit.commitHash, file)], cwd=repository )
+    file1content = call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=repositoryDir )
+    file2content = call( ['git', 'show', '%s:%s' % (commit.commitHash, file)], cwd=repositoryDir )
     file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_OLD_%s' % os.path.basename(file) )
     file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_NEW_%s' % os.path.basename(file) )
     file1.write( '\n'.join( file1content ) )
     file2.write( '\n'.join( file2content ) )
     file1.flush()
     file2.flush()
-    call( ['meld', file1.name, file2.name], cwd=repository )
+    call( ['meld', file1.name, file2.name], cwd=repositoryDir )
 
 def call( cmd, cwd=None, input=None ):
     if isinstance( input, str ):
@@ -161,6 +164,8 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
     return outputStrings
 
 def passesFilter( filename ):
+    if not includeDirectories and not includeFiles:
+        return True
     found = False
     if not found:
         for include in includeDirectories:
@@ -207,8 +212,8 @@ def on_tree_currentItemChanged( current, before ):
         author = '<strong>author</strong>: %s (%s), <strong>email</strong>: %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
         global_ui_commitInfo2.setText( '%s<br />%s' % (author, childrenParents) )
 
-        #diff = call( ['git', 'diff', '%s~1..%s' % (global_selectedCommit, global_selectedCommit), '--name-status'], cwd=repository )
-        #diff = call( ['git', 'log', '-1', '--name-status', '--format=', global_selectedCommit], cwd=repository )
+        #diff = call( ['git', 'diff', '%s~1..%s' % (global_selectedCommit, global_selectedCommit), '--name-status'], cwd=repositoryDir )
+        #diff = call( ['git', 'log', '-1', '--name-status', '--format=', global_selectedCommit], cwd=repositoryDir )
         global_ui_diffFiles.clear()
         for file in global_selectedCommit.files:
             (status, name) = (file.status, file.name)
@@ -222,9 +227,12 @@ def on_tree_currentItemChanged( current, before ):
             global_ui_diffFiles.addTopLevelItem( item )
 
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
-        cmd.extend( includeDirectories )
-        cmd.extend( includeFiles )
-        diff = call( cmd, cwd=repository )
+        if includeDirectories or includeFiles:
+            cmd.extend( includeDirectories )
+            cmd.extend( includeFiles )
+        else:
+            cmd.append( '.' )
+        diff = call( cmd, cwd=repositoryDir )
         conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
         ansi = '\n'.join( diff )
         html = conv.convert( ansi )
@@ -287,7 +295,7 @@ def on_diffFiles_itemSelectionChanged():
         #cmd = ['git', 'diff', '%s~1..%s' % (global_selectedCommit.commitHash, global_selectedCommit.commitHash), '--color-words', '--']
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
         cmd.extend( files )
-        diff = call( cmd, cwd=repository )
+        diff = call( cmd, cwd=repositoryDir )
         conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
         ansi = '\n'.join( diff )
         html = conv.convert( ansi )
@@ -424,6 +432,11 @@ def doFiltering():
 
 def main():
 
+    global includeDirectories
+    global includeFiles
+    global repositoryDir
+    global branch
+
     global global_ui_tree
     global global_ui_textEdit
     global global_ui_diffFiles
@@ -441,23 +454,71 @@ def main():
     global global_allCommitsHash
     global global_allTags
 
-    if os.path.isfile( 'tags.json' ):
-        global_allTags = json.load( open( 'tags.json', 'r' ) )
+    parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
+    parser.add_argument( 'repository', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
+    parser.add_argument( 'paths', nargs='*', type=str, default=[], help = 'restrict to given paths' )
+    parser.add_argument( '-b', '--branch', type=str, default='master', help = 'branch name, default: %(default)s' )
+    parser.add_argument( '-n', '--no-numstat', action='store_true', help = 'do not call git log --numstat (faster)' )
+    parser.add_argument( '--full-numstat', action='store_true', help = 'call git log --numstat for excluded files (slower)' )
+    parser.add_argument( '-c', '--config-dir', metavar='DIR', type=str, default='.', help = 'directory for config files, default: %(default)s' )
+    parser.add_argument( '--tags', metavar='FILENAME', type=str, default='tgit-tags.json', help = 'tags config file, default: %(default)s' )
+    parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
+    parser.add_argument( '--commits', metavar='FILENAME', type=str, default='tgit-commits.json', help = 'commits config file, default: %(default)s' )
+    parser.add_argument( '--paths', dest='paths_filename', metavar='FILENAME', type=str, default='tgit-paths.json', help = 'paths config file (additive to --paths), default: %(default)s' )
+    args = parser.parse_args()
+
+    if args.no_numstat and args.full_numstat:
+        print( 'Error: --no-numstat and --full-numstat are mutually exclusive.' )
+        exit( 1 )
+
+    if not os.path.isdir( args.repository ):
+        print( 'Error: %s is not a directory.' % args.repository )
+        exit( 1 )
+
+    if not os.path.isdir( args.config_dir ):
+        print( 'Error: %s is not a directory.' % args.config_dir )
+        exit( 1 )
+
+    configDir = args.config_dir
+    filename_tagsJson = os.path.join( configDir, args.tags )
+    filename_commitsJson = os.path.join( configDir, args.commits )
+    filename_authorsJson = os.path.join( configDir, args.authors )
+    filename_pathsJson = os.path.join( configDir, args.paths_filename )
+
+    repositoryDir = args.repository
+    branch = args.branch
+
+    if os.path.isfile( filename_pathsJson ):
+        allPaths = json.load( open( filename_pathsJson, 'r' ) )
     else:
-        print( 'Warning: tags.json missing' )
+        allPaths = []
+    allPaths.extend( args.paths )
+    for path in allPaths:
+        if os.path.isdir( path ):
+            includeDirectories.append( os.path.relpath( path, repositoryDir ) )
+        elif os.path.isfile( path ):
+            includeFiles.append( os.path.relpath( path, repositoryDir ) )
+        else:
+            print( 'Error: %s is not a valid path.' % path )
+            exit( 1 )
+
+    if os.path.isfile( filename_tagsJson ):
+        global_allTags = json.load( open( filename_tagsJson, 'r' ) )
+    else:
+        print( 'Warning: %s missing' % filename_tagsJson )
         global_allTags = []
 
-    if os.path.isfile( 'commits.json' ):
-        allTagsPerCommitHash = json.load( open( 'commits.json', 'r' ) )
+    if os.path.isfile( filename_authorsJson ):
+        allAuthorsHash = json.load( open( filename_authorsJson, 'r' ) )
     else:
-        print( 'Warning: commits.json missing' )
-        allTagsPerCommitHash = {}
-
-    if os.path.isfile( 'authors.json' ):
-        allAuthorsHash = json.load( open( 'authors.json', 'r' ) )
-    else:
-        print( 'Warning: authors.json missing' )
+        print( 'Warning: %s missing' % filename_authorsJson )
         allAuthorsHash = {}
+
+    if os.path.isfile( filename_commitsJson ):
+        allTagsPerCommitHash = json.load( open( filename_commitsJson, 'r' ) )
+    else:
+        print( 'Warning: %s missing' % filename_commitsJson )
+        allTagsPerCommitHash = {}
 
     ui_app = QtWidgets.QApplication( [] )
 
@@ -465,7 +526,7 @@ def main():
     boldFont = QtGui.QFont()
     boldFont.setBold( True )
 
-    print( 'reading commits (1/3)...' )
+    # reading commits (1/3)...
 
     global_allCommits = []
     global_allCommitsHash = {}
@@ -474,7 +535,7 @@ def main():
     missingAuthors = set()
     # see https://git-scm.com/docs/pretty-formats
     cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', branch]
-    for log in call_nullSeperated( cmd, cwd=repository ):
+    for log in call_nullSeperated( cmd, cwd=repositoryDir ):
         if log:
             (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
             if originalAuthor in allAuthorsHash:
@@ -493,37 +554,42 @@ def main():
             global_allCommits.append( commit )
             global_allCommitsHash[commitHash] = commit
             commitCounter += 1
-    for author in missingAuthors:
-        print( 'Warning: author "%s" missing in authors.json' % author )
+    if os.path.isfile( filename_authorsJson ):
+        for author in missingAuthors:
+            print( 'Warning: author "%s" missing in %s' % (author, filename_authorsJson) )
     allAuthors = sorted( list( allAuthors ) )
 
-    print( 'reading commits (2/3)...' )
+    # reading commits (2/3)...
 
-    currentCommit = None
+    commit = None
     cmd = ['git', 'log', '--reverse', '--format=%h', '--name-status', branch]
-    for log in call( cmd, cwd=repository ):
+    for log in call( cmd, cwd=repositoryDir ):
         if log:
             if not '\t' in log:
-                currentCommit = global_allCommitsHash[log]
+                commit = global_allCommitsHash[log]
             else:
                 (status, file) = log.split( '\t', 1 )
-                currentCommit.setStatus( status, file )
+                commit.setStatus( status, file )
 
-    print( 'reading commits (3/3)...' )
+    # reading commits (3/3)...
 
-    currentCommit = None
-    cmd = ['git', 'log', '--reverse', '--format=%h', '--numstat', branch, '--']
-    cmd.extend( includeDirectories )
-    cmd.extend( includeFiles )
-    for log in call( cmd, cwd=repository ):
-        if log:
-            if not '\t' in log:
-                currentCommit = global_allCommitsHash[log]
-            else:
-                (added, removed, file) = log.split( '\t', 2 )
-                currentCommit.addNumstat( added, removed, file )
+    if not args.no_numstat:
+        commit = None
+        cmd = ['git', 'log', '--reverse', '--format=%h', '--numstat', branch, '--']
+        if includeDirectories or includeFiles:
+            cmd.extend( includeDirectories )
+            cmd.extend( includeFiles )
+        else:
+            cmd.append( '.' )
+        for log in call( cmd, cwd=repositoryDir ):
+            if log:
+                if not '\t' in log:
+                    commit = global_allCommitsHash[log]
+                else:
+                    (added, removed, file) = log.split( '\t', 2 )
+                    commit.addNumstat( added, removed, file )
 
-    print( 'building window...' )
+    # building window...
 
     ui_tree = QtWidgets.QTreeWidget()
     global_ui_tree = ui_tree
@@ -700,7 +766,7 @@ def main():
     #centralWidget = QtWidgets.QWidget()
     #centralWidget.setLayout( ui_centralLayout )
     ui_window = QtWidgets.QMainWindow()
-    ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repository ), branch) )
+    ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repositoryDir ), branch) )
     ui_window.setWindowState( QtCore.Qt.WindowMaximized )
     ui_window.setCentralWidget( ui_centralLayout )
 
@@ -715,7 +781,7 @@ def main():
     for commit in global_allCommits:
         if commit.tags:
             allTagsPerCommitHash[commit.commitHash] = commit.tags
-    json.dump( allTagsPerCommitHash, open( 'commits.json', 'w' ), indent=2 )
+    json.dump( allTagsPerCommitHash, open( filename_commitsJson, 'w' ), indent=2 )
 
 if __name__ == '__main__':
     main()
