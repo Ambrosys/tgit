@@ -516,8 +516,12 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
 
     ui_filterAuthorScrollArea = QtWidgets.QScrollArea()
     ui_filterAuthorScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-    if groupTags and existsGroupWithSingleLetter:
-        ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
+    if existsGroupWithSingleLetter:
+        if groupTags:
+            ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
+        else:
+            ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
+            ui_filterAuthorScrollArea.setMinimumSize( QtCore.QSize( 0, 200.0 ) ) # TODO: find better solution
     ui_filterAuthorScrollArea.setWidget( ui_filterAuthorWidget )
 
     ui_filterTabWidget.addTab( ui_filterAuthorScrollArea, 'authors' )
@@ -857,19 +861,20 @@ def main():
     ui_commitSelectionLayout = QtWidgets.QVBoxLayout()
     ui_commitSelectionLayout.addWidget( ui_filterAreaWidget )
     ui_commitSelectionLayout.addWidget( global_ui_commitList )
+    ui_commitSelectionLayout.setStretchFactor( global_ui_commitList, 2 )
     ui_commitSelectionWidget = QtWidgets.QWidget()
     ui_commitSelectionWidget.setLayout( ui_commitSelectionLayout )
 
-    ui_centralLayout = QtWidgets.QSplitter()
-    ui_centralLayout.setOrientation( QtCore.Qt.Horizontal )
-    ui_centralLayout.addWidget( ui_commitSelectionWidget )
-    ui_centralLayout.addWidget( ui_commitEditorWidget )
-    ui_centralLayout.setSizes( [1000, 1000] )
+    ui_centralSplitter = QtWidgets.QSplitter()
+    ui_centralSplitter.setOrientation( QtCore.Qt.Horizontal )
+    ui_centralSplitter.addWidget( ui_commitSelectionWidget )
+    ui_centralSplitter.addWidget( ui_commitEditorWidget )
+    ui_centralSplitter.setSizes( [1000, 1000] )
 
     ui_window = QtWidgets.QMainWindow()
     ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repositoryDir ), branch) )
     ui_window.setWindowState( QtCore.Qt.WindowMaximized )
-    ui_window.setCentralWidget( ui_centralLayout )
+    ui_window.setCentralWidget( ui_centralSplitter )
 
     ui_window.show()
 
