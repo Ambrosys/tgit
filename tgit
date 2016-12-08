@@ -212,8 +212,6 @@ def on_tree_currentItemChanged( current, before ):
         author = '<strong>author</strong>: %s (%s), <strong>email</strong>: %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
         global_ui_commitInfo2.setText( '%s<br />%s' % (author, childrenParents) )
 
-        #diff = call( ['git', 'diff', '%s~1..%s' % (global_selectedCommit, global_selectedCommit), '--name-status'], cwd=repositoryDir )
-        #diff = call( ['git', 'log', '-1', '--name-status', '--format=', global_selectedCommit], cwd=repositoryDir )
         global_ui_diffFiles.clear()
         for file in global_selectedCommit.files:
             (status, name) = (file.status, file.name)
@@ -292,7 +290,6 @@ def on_diffFiles_itemSelectionChanged():
     items = global_ui_diffFiles.selectedItems()
     if items:
         files = map( lambda item: item.text( diffFilesIndex_filename ), items )
-        #cmd = ['git', 'diff', '%s~1..%s' % (global_selectedCommit.commitHash, global_selectedCommit.commitHash), '--color-words', '--']
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
         cmd.extend( files )
         diff = call( cmd, cwd=repositoryDir )
@@ -691,22 +688,22 @@ def main():
     ui_filter_lineEdit.textEdited.connect( doFiltering )
 
     ui_filterAreaLayout = QtWidgets.QVBoxLayout()
-    #margin = ui_filterAreaLayout.contentsMargins()
-    #margin.setTop( margin.top() * 2.0 )
-    #ui_filterAreaLayout.setContentsMargins( margin )
     ui_filterAreaLayout.addWidget( ui_filterIncludeAreaWidget )
     ui_filterAreaLayout.addWidget( ui_filterObligatoryWidget )
     ui_filterAreaLayout.addWidget( ui_filterExcludeWidget )
     ui_filterAreaLayout.addWidget( ui_filterAuthorWidget )
     ui_filterAreaLayout.addWidget( ui_filter_lineEdit )
-    ui_filterAreaGroup = QtWidgets.QGroupBox( 'Filter' )
+    ui_filterAreaLayout.setContentsMargins( 0, 0, 0, 0 )
+    ui_filterAreaWidget = QtWidgets.QWidget()
+    ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
+
+    ui_filterAreaGroup = QtWidgets.QCheckBox( 'filter' )
     global_ui_filterAreaGroup = ui_filterAreaGroup
-    ui_filterAreaGroup.setCheckable( True )
-    ui_filterAreaGroup.setLayout( ui_filterAreaLayout )
+    ui_filterAreaGroup.setChecked( True )
+    ui_filterAreaGroup.toggled.connect( ui_filterAreaWidget.setEnabled )
     ui_filterAreaGroup.clicked.connect( doFiltering )
 
     ui_tagAreaLayout = QtWidgets.QHBoxLayout()
-    ui_tagAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     for tag in global_allTags:
         tagCheckBox = QtWidgets.QCheckBox( tag )
         global_ui_tagCheckBoxes.append( tagCheckBox )
@@ -747,7 +744,7 @@ def main():
     ui_diffLayout.setOrientation( QtCore.Qt.Vertical )
     ui_diffLayout.addWidget( ui_diffFiles )
     ui_diffLayout.addWidget( ui_textEdit )
-    ui_diffLayout.setSizes( [100, 300] )
+    ui_diffLayout.setSizes( [1000, 3000] )
 
     ui_commitLayout = QtWidgets.QVBoxLayout()
     ui_commitLayout.addWidget( ui_commitInfo1 )
@@ -759,6 +756,7 @@ def main():
 
     ui_treeLayout = QtWidgets.QVBoxLayout()
     ui_treeLayout.addWidget( ui_filterAreaGroup )
+    ui_treeLayout.addWidget( ui_filterAreaWidget )
     ui_treeLayout.addWidget( ui_tree )
     ui_treeWidget = QtWidgets.QWidget()
     ui_treeWidget.setLayout( ui_treeLayout )
@@ -767,9 +765,8 @@ def main():
     ui_centralLayout.setOrientation( QtCore.Qt.Horizontal )
     ui_centralLayout.addWidget( ui_treeWidget )
     ui_centralLayout.addWidget( ui_commitWidget )
+    ui_centralLayout.setSizes( [1000, 1000] )
 
-    #centralWidget = QtWidgets.QWidget()
-    #centralWidget.setLayout( ui_centralLayout )
     ui_window = QtWidgets.QMainWindow()
     ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repositoryDir ), branch) )
     ui_window.setWindowState( QtCore.Qt.WindowMaximized )
@@ -780,17 +777,22 @@ def main():
     # note: setHidden() has to be called after window has been shown, that's why this code is here at the bottom
     doFiltering()
 
+    for i in range( 0, ui_tree.topLevelItemCount() ):
+        item = ui_tree.topLevelItem( i )
+        if not item.isHidden():
+            ui_tree.setCurrentItem( item )
+            item.setSelected( True )
+            break
+    ui_tree.setFocus()
+
     ui_app.exec_()
 
     allTagsPerCommitHash = collections.OrderedDict()
     for commit in global_allCommits:
         if commit.tags:
             allTagsPerCommitHash[commit.commitHash] = commit.tags
-    if allTagsPerCommitHash:
+    if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
         json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
-    else:
-        if os.path.isfile( filepath_commitsJson ):
-            os.remove( filepath_commitsJson )
 
 if __name__ == '__main__':
     main()
