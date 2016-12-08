@@ -54,30 +54,44 @@ has to be given.
 
 ### tgit-tags.json
 
-This file defines the tags which can be assigned to commits.
-
-Example:
-```json
-[
-  "other",
-  "refactoring",
-  "bugfix",
-  "feature 1",
-  "feature 2",
-  "merged"
-]
-```
-
-### tgit-authors.json
-
-This file defines author mappings (to simplify the UI).
+This file defines the tags (in user-definable groups) which can be assigned to commits.
 
 Example:
 ```json
 {
-  "Fabian Sandoval": "fs",
-  "FabianSandoval": "fs",
-  "Max Mustermann": "mm"
+  "feature": [
+    "feature 1",
+    "feature 2",
+    "other"
+  ],
+  "misc": [
+    "refactoring",
+    "bugfix"
+  ],
+  "style": [
+    "comment",
+    "formatting"
+  ],
+  "status": [
+    "merged"
+  ]
+}
+```
+
+### tgit-authors.json
+
+This file defines author groups and author mappings (to simplify the UI).
+
+Example:
+```json
+{
+  "core": {
+    "fs": ["Fabian Sandoval", "FabianSandoval"],
+    "jd": ["John Doe"]
+  },
+  "other": {
+    "mm": ["Max Mustermann"]
+  }
 }
 ```
 
