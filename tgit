@@ -447,7 +447,7 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
             checkBoxList.append( filterCheckBox )
             filterCheckBox.setChecked( checked )
             if enabled:
-                filterCheckBox.stateChanged.connect( slot )
+                filterCheckBox.clicked.connect( slot )
             else:
                 filterCheckBox.setEnabled( False )
             ui_tagLineLayout.addWidget( filterCheckBox )
@@ -770,7 +770,7 @@ def main():
             filterCheckBox.setChecked( True )
         if tag == 'untagged' and not global_allTagsGrouped and not undefinedTags:
             filterCheckBox.setHidden( True )
-        filterCheckBox.stateChanged.connect( doFiltering )
+        filterCheckBox.clicked.connect( doFiltering )
         ui_filterIncludeSpecialAreaLineLayout.addWidget( filterCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addStretch()
     ui_filterIncludeSpecialAreaLineWidget = QtWidgets.QWidget()
