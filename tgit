@@ -14,6 +14,7 @@ import collections
 import datetime
 import re
 import argparse
+import functools
 
 repositoryDir = None
 branch = None
@@ -33,7 +34,8 @@ global_ui_diffViewer = None
 global_ui_filesList = None
 global_ui_commitInfo1 = None
 global_ui_commitInfo2 = None
-global_ui_filterAreaGroup = None
+global_ui_filterAreaCheckBox = None
+global_ui_filterIncludeSpecialCheckBoxes = []
 global_ui_filterIncludeCheckBoxes = []
 global_ui_filterObligatoryCheckBoxes = []
 global_ui_filterExcludeCheckBoxes = []
@@ -45,6 +47,7 @@ global_selectedCommit = None
 global_allCommits = []
 global_allCommitsHash = {}
 global_allTags = []
+global_allTagsGrouped = {}
 
 class CommitFile:
     def __init__( self, name ):
@@ -204,12 +207,12 @@ def on_tree_currentItemChanged( current, before ):
 
         global_ui_commitInfo1.setText( global_selectedCommit.getOnelinerHtml( False ) )
 
-        children = map( lambda c: '<strong>child</strong>: %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
-        parents = map( lambda cHash: '<strong>parent</strong>: %s<br />' % global_allCommitsHash[cHash].getOnelinerHtml( True ), global_selectedCommit.parents )
+        children = map( lambda c: '<strong>child:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
+        parents = map( lambda cHash: '<strong>parent:</strong> %s<br />' % global_allCommitsHash[cHash].getOnelinerHtml( True ), global_selectedCommit.parents )
         childrenParents = '%s\n%s' % ('\n'.join(children), '\n'.join(parents))
         if childrenParents[-6:] == '<br />':
             childrenParents = childrenParents[:-6]
-        author = '<strong>author</strong>: %s (%s), <strong>email</strong>: %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
+        author = '<strong>author:</strong> %s (%s), <strong>email:</strong> %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
         global_ui_commitInfo2.setText( '%s<br />%s' % (author, childrenParents) )
 
         global_ui_filesList.clear()
@@ -279,9 +282,12 @@ def showContextMenu( item, globalPos ):
     menu = QtWidgets.QMenu( receiver )
     addMenu = menu.addMenu( 'add' )
     removeMenu = menu.addMenu( 'remove' )
-    for tag in global_allTags:
-        addMenu.addAction( tag, receiver.on_addTag )
-        removeMenu.addAction( tag, receiver.on_removeTag )
+    for group in global_allTagsGrouped:
+        addSubMenu = addMenu.addMenu( group )
+        removeSubMenu = removeMenu.addMenu( group )
+        for tag in global_allTagsGrouped[group]:
+            addSubMenu.addAction( tag, receiver.on_addTag )
+            removeSubMenu.addAction( tag, receiver.on_removeTag )
 
     menu.exec( globalPos )
 
@@ -305,12 +311,8 @@ def on_diffFiles_itemActivated( item ):
     thread = threading.Thread( target=diff_nonblocking, args=(global_selectedCommit, file) )
     thread.start()
 
-@QtCore.pyqtSlot( int )
-def on_filterCheckBox_stateChanged( state ):
-    doFiltering()
-
-@QtCore.pyqtSlot( bool )
-def on_tagCheckBox_clicked( checked ):
+@QtCore.pyqtSlot()
+def on_tagCheckBox_clicked():
     if global_selectedCommit is None:
         return
     tags = []
@@ -331,23 +333,20 @@ def on_label_linkActivated( link ):
     global_ui_commitList.setCurrentItem( item )
 
 @QtCore.pyqtSlot()
-def on_selectAuthorsButton_clicked():
-    for checkBox in global_ui_filterAuthorCheckBoxes:
+def on_selectCheckBoxes( checkBoxes, select, slot ):
+    for checkBox in checkBoxes:
         checkBox.blockSignals( True )
-        checkBox.setChecked( True )
+        checkBox.setChecked( select )
         checkBox.blockSignals( False )
-    doFiltering()
-
-@QtCore.pyqtSlot()
-def on_unselectAuthorsButton_clicked():
-    for checkBox in global_ui_filterAuthorCheckBoxes:
-        checkBox.blockSignals( True )
-        checkBox.setChecked( False )
-        checkBox.blockSignals( False )
-    doFiltering()
+    slot()
 
 @QtCore.pyqtSlot()
 def doFiltering():
+    activeIncludeSpecialFilter = set()
+    for filterCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
+        if filterCheckBox.isChecked():
+            activeIncludeSpecialFilter.add( filterCheckBox.text() )
+
     activeIncludeFilter = set()
     for filterCheckBox in global_ui_filterIncludeCheckBoxes:
         if filterCheckBox.isChecked():
@@ -378,7 +377,7 @@ def doFiltering():
         commit = global_allCommitsHash[item.text( treeIndex_commit )]
         shouldBeVisible = True
 
-        if global_ui_filterAreaGroup.isChecked():
+        if global_ui_filterAreaCheckBox.isChecked():
             if shouldBeVisible:
                 if not commit.author in activeAuthorFilter:
                     shouldBeVisible = False
@@ -396,7 +395,7 @@ def doFiltering():
                         break
 
             if shouldBeVisible:
-                if not 'outside' in activeIncludeFilter and not somePassesFilter( commit.getFilenames(), False ):
+                if not 'outside' in activeIncludeSpecialFilter and not somePassesFilter( commit.getFilenames(), False ):
                     shouldBeVisible = False
                 else:
                     foundATag = False
@@ -405,7 +404,7 @@ def doFiltering():
                             foundATag = True
                             break
                     if not foundATag:
-                        if commit.tags or not 'untagged' in activeIncludeFilter:
+                        if commit.tags or not 'untagged' in activeIncludeSpecialFilter:
                             shouldBeVisible = False
 
                     if shouldBeVisible:
@@ -427,6 +426,104 @@ def doFiltering():
     if global_ui_commitList.currentItem():
         global_ui_commitList.scrollToItem( global_ui_commitList.currentItem() )
 
+def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
+    ui_tagGridLayout = QtWidgets.QGridLayout()
+    ui_tagGridLayout.setVerticalSpacing( 0 )
+
+    for row, group in enumerate( groupTags ):
+        (enabled, tags) = groupTags[group]
+        if not tags:
+            continue
+
+        ui_tagLineLayout = QtWidgets.QHBoxLayout()
+
+        ui_tagGridLayout.addWidget( QtWidgets.QLabel( '<strong>%s:</strong>' % group ), row, 0 )
+
+        rowCheckBoxList = []
+        for tag in tags:
+            filterCheckBox = QtWidgets.QCheckBox( tag )
+            filterCheckBox.setContentsMargins( 0, 0, 0, 0 )
+            rowCheckBoxList.append( filterCheckBox )
+            checkBoxList.append( filterCheckBox )
+            filterCheckBox.setChecked( checked )
+            if enabled:
+                filterCheckBox.stateChanged.connect( slot )
+            else:
+                filterCheckBox.setEnabled( False )
+            ui_tagLineLayout.addWidget( filterCheckBox )
+
+        ui_tagLineLayout.addStretch()
+
+        if enabled:
+            # note: If we use lambda below instead of functools.partial,
+            #       rowCheckBoxList in the slot refers to the last
+            #       rowCheckBoxList defined in this loop. This may be a python
+            #       error, because "rowCheckBoxList = []" above states
+            #       explicitely that we want a new list instance and do not
+            #       want to overwrite the last one. The effect is that each
+            #       button toggles all check boxes in the tab instead only
+            #       toggling the row.
+            ui_selectButton = QtWidgets.QPushButton( 'all' )
+            ui_selectButton.clicked.connect( functools.partial( on_selectCheckBoxes, rowCheckBoxList, True, slot ) )
+            ui_unselectButton = QtWidgets.QPushButton( 'none' )
+            ui_unselectButton.clicked.connect( functools.partial( on_selectCheckBoxes, rowCheckBoxList, False, slot ) )
+            ui_tagLineLayout.addWidget( ui_selectButton )
+            ui_tagLineLayout.addWidget( ui_unselectButton )
+
+        ui_tagGridLayout.addLayout( ui_tagLineLayout, row, 1 )
+
+    ui_tagGridWidget = QtWidgets.QWidget()
+    ui_tagGridWidget.setLayout( ui_tagGridLayout )
+    return ui_tagGridWidget
+
+def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped ):
+    groupTags = collections.OrderedDict()
+    for group in global_allTagsGrouped:
+        groupTags[group] = (True, definedTagsGrouped[group])
+    if undefinedTags:
+        groupTags['undefined'] = (True, undefinedTags)
+
+    ui_filterTabWidget = QtWidgets.QTabWidget()
+    if groupTags:
+        ui_filterTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
+
+        ui_filterIncludeWidget = createTagCheckBoxes( groupTags, global_ui_filterIncludeCheckBoxes, True, doFiltering )
+        ui_filterObligatoryWidget = createTagCheckBoxes( groupTags, global_ui_filterObligatoryCheckBoxes, False, doFiltering )
+        ui_filterExcludeWidget = createTagCheckBoxes( groupTags, global_ui_filterExcludeCheckBoxes, False, doFiltering )
+
+        ui_filterIncludeScrollArea = QtWidgets.QScrollArea()
+        ui_filterIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterIncludeScrollArea.setWidget( ui_filterIncludeWidget )
+        ui_filterObligatoryScrollArea = QtWidgets.QScrollArea()
+        ui_filterObligatoryScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterObligatoryScrollArea.setWidget( ui_filterObligatoryWidget )
+        ui_filterExcludeScrollArea = QtWidgets.QScrollArea()
+        ui_filterExcludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterExcludeScrollArea.setWidget( ui_filterExcludeWidget )
+
+        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea, 'include tags' )
+        ui_filterTabWidget.addTab( ui_filterObligatoryScrollArea, 'obligatory tags' )
+        ui_filterTabWidget.addTab( ui_filterExcludeScrollArea, 'exclude tags' )
+
+    existsGroupWithSingleLetter = False # may happen if the group is auto-generated from first letter
+    groupAuthors = collections.OrderedDict()
+    for group, authors in allAuthorsGrouped.items():
+        groupAuthors[group] = (True, authors)
+        if len( group ) == 1:
+            existsGroupWithSingleLetter = True
+
+    ui_filterAuthorWidget = createTagCheckBoxes( groupAuthors, global_ui_filterAuthorCheckBoxes, True, doFiltering )
+
+    ui_filterAuthorScrollArea = QtWidgets.QScrollArea()
+    ui_filterAuthorScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+    if groupTags and existsGroupWithSingleLetter:
+        ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
+    ui_filterAuthorScrollArea.setWidget( ui_filterAuthorWidget )
+
+    ui_filterTabWidget.addTab( ui_filterAuthorScrollArea, 'authors' )
+
+    return ui_filterTabWidget
+
 def main():
 
     global includeDirectories
@@ -439,7 +536,8 @@ def main():
     global global_ui_filesList
     global global_ui_commitInfo1
     global global_ui_commitInfo2
-    global global_ui_filterAreaGroup
+    global global_ui_filterAreaCheckBox
+    global global_ui_filterIncludeSpecialCheckBoxes
     global global_ui_filterIncludeCheckBoxes
     global global_ui_filterObligatoryCheckBoxes
     global global_ui_filterExcludeCheckBoxes
@@ -450,6 +548,7 @@ def main():
     global global_allCommits
     global global_allCommitsHash
     global global_allTags
+    global global_allTagsGrouped
 
     parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
     parser.add_argument( 'root', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
@@ -508,14 +607,26 @@ def main():
             exit( 1 )
 
     if os.path.isfile( filepath_tagsJson ):
-        global_allTags = json.load( open( filepath_tagsJson, 'r' ) )
+        global_allTagsGrouped = json.load( open( filepath_tagsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
-        global_allTags = []
+        global_allTagsGrouped = {}
+    for group, tags in global_allTagsGrouped.items():
+        global_allTags.extend( tags )
 
     if os.path.isfile( filepath_authorsJson ):
-        allAuthorsHash = json.load( open( filepath_authorsJson, 'r' ) )
+        allAuthorsHashGrouped = json.load( open( filepath_authorsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
-        allAuthorsHash = {}
+        allAuthorsHashGrouped = {}
+    allAuthorsGrouped = collections.OrderedDict()
+    allAuthorsHash = {}
+    allAuthorsHash_author_group = {}
+    for group, authorsHash in allAuthorsHashGrouped.items():
+        allAuthorsGrouped[group] = set()
+        for author, originalAuthors in authorsHash.items():
+            allAuthorsGrouped[group].add( author )
+            allAuthorsHash_author_group[author] = group
+            for originalAuthor in originalAuthors:
+                allAuthorsHash[originalAuthor] = author
 
     if os.path.isfile( filepath_commitsJson ):
         allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ) )
@@ -533,20 +644,31 @@ def main():
     global_allCommits = []
     global_allCommitsHash = {}
     commitCounter = 1
-    allAuthors = set()
     missingAuthors = set()
+    newGroups = {}
     tagsUsedForCommits = set()
     # see https://git-scm.com/docs/pretty-formats
     cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', branch]
     for log in call_nullSeperated( cmd, cwd=repositoryDir ):
         if log:
             (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
+
             if originalAuthor in allAuthorsHash:
                 author = allAuthorsHash[originalAuthor]
             else:
                 author = originalAuthor
                 missingAuthors.add( originalAuthor )
-            allAuthors.add( author )
+            if author in allAuthorsHash_author_group:
+                group = allAuthorsHash_author_group[author]
+            else:
+                group = author[0].upper()
+            if group in allAuthorsGrouped:
+                allAuthorsGrouped[group].add( author )
+            else:
+                if not group in newGroups:
+                    newGroups[group] = set()
+                newGroups[group].add( author )
+
             parents = parents.split( ' ' )
             if not parents[0]:
                 parents = []
@@ -561,7 +683,10 @@ def main():
     if os.path.isfile( filepath_authorsJson ):
         for author in missingAuthors:
             print( 'Warning: author "%s" missing in %s' % (author, filepath_authorsJson) )
-    allAuthors = sorted( list( allAuthors ) )
+    for newGroup in sorted( newGroups.keys() ):
+        allAuthorsGrouped[newGroup] = newGroups[newGroup]
+    for group in allAuthorsGrouped:
+        allAuthorsGrouped[group] = sorted( list( allAuthorsGrouped[group] ) )
 
     # reading commits (2/3)...
 
@@ -626,105 +751,69 @@ def main():
     global_ui_diffViewer.setReadOnly( True )
     global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
-    ui_filterIncludeAreaLayout = QtWidgets.QHBoxLayout()
-    ui_filterIncludeAreaLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterIncludeAreaLayout.addWidget( QtWidgets.QLabel( '<strong>show:</strong>' ) )
-    filterNames = ['outside', 'untagged']
-    filterNames.extend( global_allTags )
-    filterNames.extend( undefinedTags )
-    for filterName in filterNames:
-        filterCheckBox = QtWidgets.QCheckBox( filterName )
-        global_ui_filterIncludeCheckBoxes.append( filterCheckBox )
-        if filterName != 'outside':
+    global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'filter' )
+    global_ui_filterAreaCheckBox.setChecked( True )
+    # signals are assigned later
+
+    ui_vline = QtWidgets.QFrame()
+    ui_vline.setFrameShape( QtWidgets.QFrame.VLine )
+    ui_vline.setFrameShadow( QtWidgets.QFrame.Sunken )
+
+    ui_filterIncludeSpecialAreaLineLayout = QtWidgets.QHBoxLayout()
+    ui_filterIncludeSpecialAreaLineLayout.setContentsMargins( 0, 0, 0, 0 )
+    ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaCheckBox )
+    ui_filterIncludeSpecialAreaLineLayout.addWidget( ui_vline )
+    for tag in ['outside', 'untagged']:
+        filterCheckBox = QtWidgets.QCheckBox( tag )
+        global_ui_filterIncludeSpecialCheckBoxes.append( filterCheckBox )
+        if tag != 'outside':
             filterCheckBox.setChecked( True )
-        filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
-        ui_filterIncludeAreaLayout.addWidget( filterCheckBox )
-    ui_filterIncludeAreaLayout.addStretch()
-    ui_filterIncludeAreaWidget = QtWidgets.QWidget()
-    ui_filterIncludeAreaWidget.setLayout( ui_filterIncludeAreaLayout )
+        if tag == 'untagged' and not global_allTagsGrouped and not undefinedTags:
+            filterCheckBox.setHidden( True )
+        filterCheckBox.stateChanged.connect( doFiltering )
+        ui_filterIncludeSpecialAreaLineLayout.addWidget( filterCheckBox )
+    ui_filterIncludeSpecialAreaLineLayout.addStretch()
+    ui_filterIncludeSpecialAreaLineWidget = QtWidgets.QWidget()
+    ui_filterIncludeSpecialAreaLineWidget.setLayout( ui_filterIncludeSpecialAreaLineLayout )
 
-    ui_filterObligatoryLayout = QtWidgets.QHBoxLayout()
-    ui_filterObligatoryLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterObligatoryLayout.addWidget( QtWidgets.QLabel( '<strong>obligatory:</strong>' ) )
-    filterNames = []
-    filterNames.extend( global_allTags )
-    filterNames.extend( undefinedTags )
-    for filterName in filterNames:
-        filterCheckBox = QtWidgets.QCheckBox( filterName )
-        global_ui_filterObligatoryCheckBoxes.append( filterCheckBox )
-        filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
-        ui_filterObligatoryLayout.addWidget( filterCheckBox )
-    ui_filterObligatoryLayout.addStretch()
-    ui_filterObligatoryWidget = QtWidgets.QWidget()
-    ui_filterObligatoryWidget.setLayout( ui_filterObligatoryLayout )
-
-    ui_filterExcludeLayout = QtWidgets.QHBoxLayout()
-    ui_filterExcludeLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterExcludeLayout.addWidget( QtWidgets.QLabel( '<strong>exclude:</strong>' ) )
-    filterNames = []
-    filterNames.extend( global_allTags )
-    filterNames.extend( undefinedTags )
-    for filterName in filterNames:
-        filterCheckBox = QtWidgets.QCheckBox( filterName )
-        global_ui_filterExcludeCheckBoxes.append( filterCheckBox )
-        filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
-        ui_filterExcludeLayout.addWidget( filterCheckBox )
-    ui_filterExcludeLayout.addStretch()
-    ui_filterExcludeWidget = QtWidgets.QWidget()
-    ui_filterExcludeWidget.setLayout( ui_filterExcludeLayout )
-
-    ui_filterAuthorLayout = QtWidgets.QHBoxLayout()
-    ui_filterAuthorLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterAuthorLayout.addWidget( QtWidgets.QLabel( '<strong>authors:</strong>' ) )
-    for filterName in allAuthors:
-        filterCheckBox = QtWidgets.QCheckBox( filterName )
-        global_ui_filterAuthorCheckBoxes.append( filterCheckBox )
-        filterCheckBox.setChecked( True )
-        filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
-        ui_filterAuthorLayout.addWidget( filterCheckBox )
-    ui_selectAuthorsButton = QtWidgets.QPushButton( 'all' )
-    ui_selectAuthorsButton.clicked.connect( on_selectAuthorsButton_clicked )
-    ui_unselectAuthorsButton = QtWidgets.QPushButton( 'none' )
-    ui_unselectAuthorsButton.clicked.connect( on_unselectAuthorsButton_clicked )
-    ui_filterAuthorLayout.addWidget( ui_selectAuthorsButton )
-    ui_filterAuthorLayout.addWidget( ui_unselectAuthorsButton )
-    ui_filterAuthorLayout.addStretch()
-    ui_filterAuthorWidget = QtWidgets.QWidget()
-    ui_filterAuthorWidget.setLayout( ui_filterAuthorLayout )
+    ui_filterTabWidget = createFilterTabWidget( global_allTagsGrouped, undefinedTags, allAuthorsGrouped )
 
     global_ui_filter_lineEdit = QtWidgets.QLineEdit()
     #global_ui_filter_lineEdit.editingFinished.connect( doFiltering )
     global_ui_filter_lineEdit.textEdited.connect( doFiltering )
 
     ui_filterAreaLayout = QtWidgets.QVBoxLayout()
-    ui_filterAreaLayout.addWidget( ui_filterIncludeAreaWidget )
-    ui_filterAreaLayout.addWidget( ui_filterObligatoryWidget )
-    ui_filterAreaLayout.addWidget( ui_filterExcludeWidget )
-    ui_filterAreaLayout.addWidget( ui_filterAuthorWidget )
+    ui_filterAreaLayout.addWidget( ui_filterIncludeSpecialAreaLineWidget )
+    ui_filterAreaLayout.addWidget( ui_filterTabWidget )
     ui_filterAreaLayout.addWidget( global_ui_filter_lineEdit )
     ui_filterAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterAreaWidget = QtWidgets.QWidget()
     ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
 
-    global_ui_filterAreaGroup = QtWidgets.QCheckBox( 'filter' )
-    global_ui_filterAreaGroup.setChecked( True )
-    global_ui_filterAreaGroup.toggled.connect( ui_filterAreaWidget.setEnabled )
-    global_ui_filterAreaGroup.clicked.connect( doFiltering )
+    for ui_filterIncludeSpecialCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
+        global_ui_filterAreaCheckBox.toggled.connect( ui_filterIncludeSpecialCheckBox.setEnabled )
+    global_ui_filterAreaCheckBox.toggled.connect( ui_filterTabWidget.setEnabled )
+    global_ui_filterAreaCheckBox.toggled.connect( global_ui_filter_lineEdit.setEnabled )
+    global_ui_filterAreaCheckBox.clicked.connect( doFiltering )
 
-    ui_tagAreaLayout = QtWidgets.QHBoxLayout()
-    for tag in global_allTags:
-        tagCheckBox = QtWidgets.QCheckBox( tag )
-        global_ui_tagCheckBoxes.append( tagCheckBox )
-        tagCheckBox.clicked.connect( on_tagCheckBox_clicked )
-        ui_tagAreaLayout.addWidget( tagCheckBox )
-    for tag in undefinedTags:
-        tagCheckBox = QtWidgets.QCheckBox( tag )
-        global_ui_tagCheckBoxes.append( tagCheckBox )
-        tagCheckBox.setEnabled( False )
-        ui_tagAreaLayout.addWidget( tagCheckBox )
-    ui_tagAreaLayout.addStretch()
-    ui_tagAreaWidget = QtWidgets.QWidget()
-    ui_tagAreaWidget.setLayout( ui_tagAreaLayout )
+    groupTags = collections.OrderedDict()
+    for group in global_allTagsGrouped:
+        groupTags[group] = (True, global_allTagsGrouped[group])
+    if undefinedTags:
+        groupTags['undefined'] = (False, undefinedTags)
+
+    if groupTags:
+        ui_tagWidget = createTagCheckBoxes( groupTags, global_ui_tagCheckBoxes, False, on_tagCheckBox_clicked )
+
+        ui_tagScrollArea = QtWidgets.QScrollArea()
+        ui_tagScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_tagScrollArea.setWidget( ui_tagWidget )
+
+        ui_tagAreaWidget = QtWidgets.QTabWidget()
+        ui_tagAreaWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum )
+        ui_tagAreaWidget.addTab( ui_tagScrollArea, 'tags' )
+    else:
+        ui_tagAreaWidget = None
 
     global_ui_commitInfo1 = QtWidgets.QLabel()
     global_ui_commitInfo1.setText( 'commit' )
@@ -758,14 +847,14 @@ def main():
 
     ui_commitEditorLayout = QtWidgets.QVBoxLayout()
     ui_commitEditorLayout.addWidget( global_ui_commitInfo1 )
-    ui_commitEditorLayout.addWidget( ui_tagAreaWidget )
+    if ui_tagAreaWidget:
+        ui_commitEditorLayout.addWidget( ui_tagAreaWidget )
     ui_commitEditorLayout.addWidget( global_ui_commitInfo2 )
     ui_commitEditorLayout.addWidget( ui_diffSplitter )
     ui_commitEditorWidget = QtWidgets.QWidget()
     ui_commitEditorWidget.setLayout( ui_commitEditorLayout )
 
     ui_commitSelectionLayout = QtWidgets.QVBoxLayout()
-    ui_commitSelectionLayout.addWidget( global_ui_filterAreaGroup )
     ui_commitSelectionLayout.addWidget( ui_filterAreaWidget )
     ui_commitSelectionLayout.addWidget( global_ui_commitList )
     ui_commitSelectionWidget = QtWidgets.QWidget()
