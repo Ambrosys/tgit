@@ -28,9 +28,9 @@ treeIndex_tags = 3
 treeIndex_author = 5
 diffFilesIndex_filename = 1
 
-global_ui_tree = None
-global_ui_textEdit = None
-global_ui_diffFiles = None
+global_ui_commitList = None
+global_ui_diffViewer = None
+global_ui_filesList = None
 global_ui_commitInfo1 = None
 global_ui_commitInfo2 = None
 global_ui_filterAreaGroup = None
@@ -212,7 +212,7 @@ def on_tree_currentItemChanged( current, before ):
         author = '<strong>author</strong>: %s (%s), <strong>email</strong>: %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
         global_ui_commitInfo2.setText( '%s<br />%s' % (author, childrenParents) )
 
-        global_ui_diffFiles.clear()
+        global_ui_filesList.clear()
         for file in global_selectedCommit.files:
             (status, name) = (file.status, file.name)
             if passesFilter( name ):
@@ -222,7 +222,7 @@ def on_tree_currentItemChanged( current, before ):
             else:
                 item = QtWidgets.QTreeWidgetItem( ['', name] )
                 item.setForeground( diffFilesIndex_filename, QtGui.QBrush( QtCore.Qt.lightGray ) )
-            global_ui_diffFiles.addTopLevelItem( item )
+            global_ui_filesList.addTopLevelItem( item )
 
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
         if includeDirectories or includeFiles:
@@ -235,13 +235,13 @@ def on_tree_currentItemChanged( current, before ):
         ansi = '\n'.join( diff )
         html = conv.convert( ansi )
         #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-        global_ui_textEdit.setHtml( html )
+        global_ui_diffViewer.setHtml( html )
 
 @QtCore.pyqtSlot( QtCore.QPoint )
 def on_tree_customContextMenuRequested( pos ):
-    item = global_ui_tree.itemAt( pos )
+    item = global_ui_commitList.itemAt( pos )
     if item:
-        showContextMenu( item, global_ui_tree.viewport().mapToGlobal( pos ) )
+        showContextMenu( item, global_ui_commitList.viewport().mapToGlobal( pos ) )
 
 def updateTagsOfTreeWidgetItem( commit ):
     global_ui_treeWidgetItemHash[commit.commitHash].setText( treeIndex_tags, commit.getTagsOneliner() )
@@ -251,23 +251,23 @@ class TagMenuSlot( QtWidgets.QWidget ):
     @QtCore.pyqtSlot()
     def on_addTag( self ):
         tag = self.sender().text()
-        for item in global_ui_tree.selectedItems():
+        for item in global_ui_commitList.selectedItems():
             commit = global_allCommitsHash[item.text( treeIndex_commit )]
             if not tag in commit.tags:
                 commit.tags.append( tag )
                 updateTagsOfTreeWidgetItem( commit )
-        on_tree_currentItemChanged( global_ui_tree.currentItem(), None )
+        on_tree_currentItemChanged( global_ui_commitList.currentItem(), None )
         doFiltering()
 
     @QtCore.pyqtSlot()
     def on_removeTag( self ):
         tag = self.sender().text()
-        for item in global_ui_tree.selectedItems():
+        for item in global_ui_commitList.selectedItems():
             commit = global_allCommitsHash[item.text( treeIndex_commit )]
             if tag in commit.tags:
                 commit.tags.remove( tag )
                 updateTagsOfTreeWidgetItem( commit )
-        on_tree_currentItemChanged( global_ui_tree.currentItem(), None )
+        on_tree_currentItemChanged( global_ui_commitList.currentItem(), None )
         doFiltering()
 
 def showContextMenu( item, globalPos ):
@@ -287,7 +287,7 @@ def showContextMenu( item, globalPos ):
 
 @QtCore.pyqtSlot()
 def on_diffFiles_itemSelectionChanged():
-    items = global_ui_diffFiles.selectedItems()
+    items = global_ui_filesList.selectedItems()
     if items:
         files = map( lambda item: item.text( diffFilesIndex_filename ), items )
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
@@ -297,7 +297,7 @@ def on_diffFiles_itemSelectionChanged():
         ansi = '\n'.join( diff )
         html = conv.convert( ansi )
         #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-        global_ui_textEdit.setHtml( html )
+        global_ui_diffViewer.setHtml( html )
 
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
 def on_diffFiles_itemActivated( item ):
@@ -324,11 +324,11 @@ def on_tagCheckBox_clicked( checked ):
 
 @QtCore.pyqtSlot( str )
 def on_label_linkActivated( link ):
-    for item in global_ui_tree.selectedItems():
+    for item in global_ui_commitList.selectedItems():
         item.setSelected( False )
     item = global_ui_treeWidgetItemHash[link]
     item.setSelected( True )
-    global_ui_tree.setCurrentItem( item )
+    global_ui_commitList.setCurrentItem( item )
 
 @QtCore.pyqtSlot()
 def on_selectAuthorsButton_clicked():
@@ -373,8 +373,8 @@ def doFiltering():
     except re.error:
         filterRegex = re.compile( r'.*' )
 
-    for i in range( 0, global_ui_tree.topLevelItemCount() ):
-        item = global_ui_tree.topLevelItem( i )
+    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
+        item = global_ui_commitList.topLevelItem( i )
         commit = global_allCommitsHash[item.text( treeIndex_commit )]
         shouldBeVisible = True
 
@@ -424,8 +424,8 @@ def doFiltering():
 
         item.setHidden( not shouldBeVisible )
 
-    if global_ui_tree.currentItem():
-        global_ui_tree.scrollToItem( global_ui_tree.currentItem() )
+    if global_ui_commitList.currentItem():
+        global_ui_commitList.scrollToItem( global_ui_commitList.currentItem() )
 
 def main():
 
@@ -434,9 +434,9 @@ def main():
     global repositoryDir
     global branch
 
-    global global_ui_tree
-    global global_ui_textEdit
-    global global_ui_diffFiles
+    global global_ui_commitList
+    global global_ui_diffViewer
+    global global_ui_filesList
     global global_ui_commitInfo1
     global global_ui_commitInfo2
     global global_ui_filterAreaGroup
@@ -593,16 +593,15 @@ def main():
 
     # building window...
 
-    ui_tree = QtWidgets.QTreeWidget()
-    global_ui_tree = ui_tree
-    ui_tree.setRootIsDecorated( False )
-    ui_tree.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
-    ui_tree.setColumnCount( 7 )
-    ui_tree.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
-    ui_tree.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
-    ui_tree.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
-    ui_tree.currentItemChanged.connect( on_tree_currentItemChanged )
-    ui_tree.customContextMenuRequested.connect( on_tree_customContextMenuRequested )
+    global_ui_commitList = QtWidgets.QTreeWidget()
+    global_ui_commitList.setRootIsDecorated( False )
+    global_ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
+    global_ui_commitList.setColumnCount( 7 )
+    global_ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
+    global_ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
+    global_ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+    global_ui_commitList.currentItemChanged.connect( on_tree_currentItemChanged )
+    global_ui_commitList.customContextMenuRequested.connect( on_tree_customContextMenuRequested )
 
     for commit in reversed( global_allCommits ):
         readableLines = str( commit.added + commit.removed )
@@ -617,15 +616,15 @@ def main():
         if not somePassesFilter( commit.getFilenames(), False ):
             for i in range( 0, item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
-        ui_tree.addTopLevelItem( item )
+        global_ui_commitList.addTopLevelItem( item )
 
-    ui_textEdit = QtWidgets.QTextEdit()
-    global_ui_textEdit = ui_textEdit
-    ui_textEdit.setReadOnly( True )
-    ui_textEdit.setWordWrapMode( QtGui.QTextOption.NoWrap )
+    global_ui_diffViewer = QtWidgets.QTextEdit()
+    global_ui_diffViewer.setReadOnly( True )
+    global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
     ui_filterIncludeAreaLayout = QtWidgets.QHBoxLayout()
     ui_filterIncludeAreaLayout.setContentsMargins( 0, 0, 0, 0 )
+    ui_filterIncludeAreaLayout.addWidget( QtWidgets.QLabel( '<strong>show:</strong>' ) )
     filterNames = ['outside', 'untagged']
     filterNames.extend( global_allTags )
     for filterName in filterNames:
@@ -682,26 +681,24 @@ def main():
     ui_filterAuthorWidget = QtWidgets.QWidget()
     ui_filterAuthorWidget.setLayout( ui_filterAuthorLayout )
 
-    ui_filter_lineEdit = QtWidgets.QLineEdit()
-    global_ui_filter_lineEdit = ui_filter_lineEdit
-    #ui_filter_lineEdit.editingFinished.connect( doFiltering )
-    ui_filter_lineEdit.textEdited.connect( doFiltering )
+    global_ui_filter_lineEdit = QtWidgets.QLineEdit()
+    #global_ui_filter_lineEdit.editingFinished.connect( doFiltering )
+    global_ui_filter_lineEdit.textEdited.connect( doFiltering )
 
     ui_filterAreaLayout = QtWidgets.QVBoxLayout()
     ui_filterAreaLayout.addWidget( ui_filterIncludeAreaWidget )
     ui_filterAreaLayout.addWidget( ui_filterObligatoryWidget )
     ui_filterAreaLayout.addWidget( ui_filterExcludeWidget )
     ui_filterAreaLayout.addWidget( ui_filterAuthorWidget )
-    ui_filterAreaLayout.addWidget( ui_filter_lineEdit )
+    ui_filterAreaLayout.addWidget( global_ui_filter_lineEdit )
     ui_filterAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterAreaWidget = QtWidgets.QWidget()
     ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
 
-    ui_filterAreaGroup = QtWidgets.QCheckBox( 'filter' )
-    global_ui_filterAreaGroup = ui_filterAreaGroup
-    ui_filterAreaGroup.setChecked( True )
-    ui_filterAreaGroup.toggled.connect( ui_filterAreaWidget.setEnabled )
-    ui_filterAreaGroup.clicked.connect( doFiltering )
+    global_ui_filterAreaGroup = QtWidgets.QCheckBox( 'filter' )
+    global_ui_filterAreaGroup.setChecked( True )
+    global_ui_filterAreaGroup.toggled.connect( ui_filterAreaWidget.setEnabled )
+    global_ui_filterAreaGroup.clicked.connect( doFiltering )
 
     ui_tagAreaLayout = QtWidgets.QHBoxLayout()
     for tag in global_allTags:
@@ -713,58 +710,55 @@ def main():
     ui_tagAreaWidget = QtWidgets.QWidget()
     ui_tagAreaWidget.setLayout( ui_tagAreaLayout )
 
-    ui_commitInfo1 = QtWidgets.QLabel()
-    global_ui_commitInfo1 = ui_commitInfo1
-    ui_commitInfo1.setText( 'commit' )
-    font = ui_commitInfo1.font()
+    global_ui_commitInfo1 = QtWidgets.QLabel()
+    global_ui_commitInfo1.setText( 'commit' )
+    font = global_ui_commitInfo1.font()
     font.setBold( True )
-    ui_commitInfo1.setFont( font )
-    ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    ui_commitInfo1.setWordWrap( True )
-    ui_commitInfo1.linkActivated.connect( on_label_linkActivated )
+    global_ui_commitInfo1.setFont( font )
+    global_ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    global_ui_commitInfo1.setWordWrap( True )
+    global_ui_commitInfo1.linkActivated.connect( on_label_linkActivated )
 
-    ui_commitInfo2 = QtWidgets.QLabel()
-    global_ui_commitInfo2 = ui_commitInfo2
-    ui_commitInfo2.setText( 'meta data' )
-    ui_commitInfo2.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    ui_commitInfo2.setWordWrap( True )
-    ui_commitInfo2.linkActivated.connect( on_label_linkActivated )
+    global_ui_commitInfo2 = QtWidgets.QLabel()
+    global_ui_commitInfo2.setText( 'meta data' )
+    global_ui_commitInfo2.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    global_ui_commitInfo2.setWordWrap( True )
+    global_ui_commitInfo2.linkActivated.connect( on_label_linkActivated )
 
-    ui_diffFiles = QtWidgets.QTreeWidget()
-    global_ui_diffFiles = ui_diffFiles
-    ui_diffFiles.setRootIsDecorated( False )
-    ui_diffFiles.setHeaderItem( QtWidgets.QTreeWidgetItem( ['lines', 'file'] ) )
-    ui_diffFiles.setColumnCount( 2 )
-    ui_diffFiles.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
-    ui_diffFiles.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
-    ui_diffFiles.itemSelectionChanged.connect( on_diffFiles_itemSelectionChanged )
-    ui_diffFiles.itemActivated.connect( on_diffFiles_itemActivated )
+    global_ui_filesList = QtWidgets.QTreeWidget()
+    global_ui_filesList.setRootIsDecorated( False )
+    global_ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['lines', 'file'] ) )
+    global_ui_filesList.setColumnCount( 2 )
+    global_ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
+    global_ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
+    global_ui_filesList.itemSelectionChanged.connect( on_diffFiles_itemSelectionChanged )
+    global_ui_filesList.itemActivated.connect( on_diffFiles_itemActivated )
 
-    ui_diffLayout = QtWidgets.QSplitter()
-    ui_diffLayout.setOrientation( QtCore.Qt.Vertical )
-    ui_diffLayout.addWidget( ui_diffFiles )
-    ui_diffLayout.addWidget( ui_textEdit )
-    ui_diffLayout.setSizes( [1000, 3000] )
+    ui_diffSplitter = QtWidgets.QSplitter()
+    ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
+    ui_diffSplitter.addWidget( global_ui_filesList )
+    ui_diffSplitter.addWidget( global_ui_diffViewer )
+    ui_diffSplitter.setSizes( [1000, 3000] )
 
-    ui_commitLayout = QtWidgets.QVBoxLayout()
-    ui_commitLayout.addWidget( ui_commitInfo1 )
-    ui_commitLayout.addWidget( ui_tagAreaWidget )
-    ui_commitLayout.addWidget( ui_commitInfo2 )
-    ui_commitLayout.addWidget( ui_diffLayout )
-    ui_commitWidget = QtWidgets.QWidget()
-    ui_commitWidget.setLayout( ui_commitLayout )
+    ui_commitEditorLayout = QtWidgets.QVBoxLayout()
+    ui_commitEditorLayout.addWidget( global_ui_commitInfo1 )
+    ui_commitEditorLayout.addWidget( ui_tagAreaWidget )
+    ui_commitEditorLayout.addWidget( global_ui_commitInfo2 )
+    ui_commitEditorLayout.addWidget( ui_diffSplitter )
+    ui_commitEditorWidget = QtWidgets.QWidget()
+    ui_commitEditorWidget.setLayout( ui_commitEditorLayout )
 
-    ui_treeLayout = QtWidgets.QVBoxLayout()
-    ui_treeLayout.addWidget( ui_filterAreaGroup )
-    ui_treeLayout.addWidget( ui_filterAreaWidget )
-    ui_treeLayout.addWidget( ui_tree )
-    ui_treeWidget = QtWidgets.QWidget()
-    ui_treeWidget.setLayout( ui_treeLayout )
+    ui_commitSelectionLayout = QtWidgets.QVBoxLayout()
+    ui_commitSelectionLayout.addWidget( global_ui_filterAreaGroup )
+    ui_commitSelectionLayout.addWidget( ui_filterAreaWidget )
+    ui_commitSelectionLayout.addWidget( global_ui_commitList )
+    ui_commitSelectionWidget = QtWidgets.QWidget()
+    ui_commitSelectionWidget.setLayout( ui_commitSelectionLayout )
 
     ui_centralLayout = QtWidgets.QSplitter()
     ui_centralLayout.setOrientation( QtCore.Qt.Horizontal )
-    ui_centralLayout.addWidget( ui_treeWidget )
-    ui_centralLayout.addWidget( ui_commitWidget )
+    ui_centralLayout.addWidget( ui_commitSelectionWidget )
+    ui_centralLayout.addWidget( ui_commitEditorWidget )
     ui_centralLayout.setSizes( [1000, 1000] )
 
     ui_window = QtWidgets.QMainWindow()
@@ -777,13 +771,13 @@ def main():
     # note: setHidden() has to be called after window has been shown, that's why this code is here at the bottom
     doFiltering()
 
-    for i in range( 0, ui_tree.topLevelItemCount() ):
-        item = ui_tree.topLevelItem( i )
+    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
+        item = global_ui_commitList.topLevelItem( i )
         if not item.isHidden():
-            ui_tree.setCurrentItem( item )
+            global_ui_commitList.setCurrentItem( item )
             item.setSelected( True )
             break
-    ui_tree.setFocus()
+    global_ui_commitList.setFocus()
 
     ui_app.exec_()
 
