@@ -30,6 +30,7 @@ treeIndex_author = 5
 diffFilesIndex_filename = 1
 
 global_ui_commitList = None
+global_ui_commitListInfo = None
 global_ui_diffViewer = None
 global_ui_filesList = None
 global_ui_commitInfo1 = None
@@ -193,7 +194,7 @@ def somePassesFilter( filenames, default ):
     return passed
 
 @QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )
-def on_tree_currentItemChanged( current, before ):
+def on_commitList_currentItemChanged( current, before ):
     """
     :type current: QtWidgets.QTreeWidgetItem
     :type before: QtWidgets.QTreeWidgetItem
@@ -241,7 +242,7 @@ def on_tree_currentItemChanged( current, before ):
         global_ui_diffViewer.setHtml( html )
 
 @QtCore.pyqtSlot( QtCore.QPoint )
-def on_tree_customContextMenuRequested( pos ):
+def on_commitList_customContextMenuRequested( pos ):
     item = global_ui_commitList.itemAt( pos )
     if item:
         showContextMenu( item, global_ui_commitList.viewport().mapToGlobal( pos ) )
@@ -252,25 +253,25 @@ def updateTagsOfTreeWidgetItem( commit ):
 class TagMenuSlot( QtWidgets.QWidget ):
 
     @QtCore.pyqtSlot()
-    def on_addTag( self ):
+    def slot_addTag( self ):
         tag = self.sender().text()
         for item in global_ui_commitList.selectedItems():
             commit = global_allCommitsHash[item.text( treeIndex_commit )]
             if not tag in commit.tags:
                 commit.tags.append( tag )
                 updateTagsOfTreeWidgetItem( commit )
-        on_tree_currentItemChanged( global_ui_commitList.currentItem(), None )
+        on_commitList_currentItemChanged( global_ui_commitList.currentItem(), None )
         doFiltering()
 
     @QtCore.pyqtSlot()
-    def on_removeTag( self ):
+    def slot_removeTag( self ):
         tag = self.sender().text()
         for item in global_ui_commitList.selectedItems():
             commit = global_allCommitsHash[item.text( treeIndex_commit )]
             if tag in commit.tags:
                 commit.tags.remove( tag )
                 updateTagsOfTreeWidgetItem( commit )
-        on_tree_currentItemChanged( global_ui_commitList.currentItem(), None )
+        on_commitList_currentItemChanged( global_ui_commitList.currentItem(), None )
         doFiltering()
 
 def showContextMenu( item, globalPos ):
@@ -286,8 +287,8 @@ def showContextMenu( item, globalPos ):
         addSubMenu = addMenu.addMenu( group )
         removeSubMenu = removeMenu.addMenu( group )
         for tag in global_allTagsGrouped[group]:
-            addSubMenu.addAction( tag, receiver.on_addTag )
-            removeSubMenu.addAction( tag, receiver.on_removeTag )
+            addSubMenu.addAction( tag, receiver.slot_addTag )
+            removeSubMenu.addAction( tag, receiver.slot_removeTag )
 
     menu.exec( globalPos )
 
@@ -333,12 +334,25 @@ def on_label_linkActivated( link ):
     global_ui_commitList.setCurrentItem( item )
 
 @QtCore.pyqtSlot()
-def on_selectCheckBoxes( checkBoxes, select, slot ):
+def slot_selectCheckBoxes( checkBoxes, select, slot ):
     for checkBox in checkBoxes:
         checkBox.blockSignals( True )
         checkBox.setChecked( select )
         checkBox.blockSignals( False )
     slot()
+
+@QtCore.pyqtSlot()
+def slot_updateCommitListInfo():
+    visibleItemsCount = 0
+    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
+        item = global_ui_commitList.topLevelItem( i )
+        if not item.isHidden():
+            visibleItemsCount += 1
+    global_ui_commitListInfo.setText( '%i/%i visible commits (%i selected)' % (
+        visibleItemsCount,
+        global_ui_commitList.topLevelItemCount(),
+        len( global_ui_commitList.selectedItems() )
+        ))
 
 @QtCore.pyqtSlot()
 def doFiltering():
@@ -426,6 +440,8 @@ def doFiltering():
     if global_ui_commitList.currentItem():
         global_ui_commitList.scrollToItem( global_ui_commitList.currentItem() )
 
+    slot_updateCommitListInfo()
+
 def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
     ui_tagGridLayout = QtWidgets.QGridLayout()
     ui_tagGridLayout.setVerticalSpacing( 0 )
@@ -464,9 +480,9 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
             #       button toggles all check boxes in the tab instead only
             #       toggling the row.
             ui_selectButton = QtWidgets.QPushButton( 'all' )
-            ui_selectButton.clicked.connect( functools.partial( on_selectCheckBoxes, rowCheckBoxList, True, slot ) )
+            ui_selectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, True, slot ) )
             ui_unselectButton = QtWidgets.QPushButton( 'none' )
-            ui_unselectButton.clicked.connect( functools.partial( on_selectCheckBoxes, rowCheckBoxList, False, slot ) )
+            ui_unselectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, False, slot ) )
             ui_tagLineLayout.addWidget( ui_selectButton )
             ui_tagLineLayout.addWidget( ui_unselectButton )
 
@@ -536,6 +552,7 @@ def main():
     global branch
 
     global global_ui_commitList
+    global global_ui_commitListInfo
     global global_ui_diffViewer
     global global_ui_filesList
     global global_ui_commitInfo1
@@ -733,8 +750,9 @@ def main():
     global_ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     global_ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     global_ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
-    global_ui_commitList.currentItemChanged.connect( on_tree_currentItemChanged )
-    global_ui_commitList.customContextMenuRequested.connect( on_tree_customContextMenuRequested )
+    global_ui_commitList.currentItemChanged.connect( on_commitList_currentItemChanged )
+    global_ui_commitList.customContextMenuRequested.connect( on_commitList_customContextMenuRequested )
+    global_ui_commitList.itemSelectionChanged.connect( slot_updateCommitListInfo )
 
     for commit in reversed( global_allCommits ):
         readableLines = str( commit.added + commit.removed )
@@ -858,9 +876,12 @@ def main():
     ui_commitEditorWidget = QtWidgets.QWidget()
     ui_commitEditorWidget.setLayout( ui_commitEditorLayout )
 
+    global_ui_commitListInfo = QtWidgets.QLabel()
+
     ui_commitSelectionLayout = QtWidgets.QVBoxLayout()
     ui_commitSelectionLayout.addWidget( ui_filterAreaWidget )
     ui_commitSelectionLayout.addWidget( global_ui_commitList )
+    ui_commitSelectionLayout.addWidget( global_ui_commitListInfo )
     ui_commitSelectionLayout.setStretchFactor( global_ui_commitList, 2 )
     ui_commitSelectionWidget = QtWidgets.QWidget()
     ui_commitSelectionWidget.setLayout( ui_commitSelectionLayout )
