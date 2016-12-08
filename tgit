@@ -455,7 +455,7 @@ def main():
     global global_allTags
 
     parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
-    parser.add_argument( 'repository', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
+    parser.add_argument( 'root', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
     parser.add_argument( 'paths', nargs='*', type=str, default=[], help = 'restrict to given paths' )
     parser.add_argument( '-b', '--branch', type=str, default='master', help = 'branch name, default: %(default)s' )
     parser.add_argument( '-n', '--no-numstat', action='store_true', help = 'do not call git log --numstat (faster)' )
@@ -464,15 +464,15 @@ def main():
     parser.add_argument( '--tags', metavar='FILENAME', type=str, default='tgit-tags.json', help = 'tags config file, default: %(default)s' )
     parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
     parser.add_argument( '--commits', metavar='FILENAME', type=str, default='tgit-commits.json', help = 'commits config file, default: %(default)s' )
-    parser.add_argument( '--paths', dest='paths_filename', metavar='FILENAME', type=str, default='tgit-paths.json', help = 'paths config file (additive to --paths), default: %(default)s' )
+    parser.add_argument( '--repository', metavar='FILENAME', type=str, default='tgit-repository.json', help = 'repository config file, default: %(default)s' )
     args = parser.parse_args()
 
     if args.no_numstat and args.full_numstat:
         print( 'Error: --no-numstat and --full-numstat are mutually exclusive.' )
         exit( 1 )
 
-    if not os.path.isdir( args.repository ):
-        print( 'Error: %s is not a directory.' % args.repository )
+    if not os.path.isdir( args.root ):
+        print( 'Error: %s is not a directory.' % args.root )
         exit( 1 )
 
     if not os.path.isdir( args.config_dir ):
@@ -483,14 +483,21 @@ def main():
     filepath_tagsJson = os.path.join( configDir, args.tags )
     filepath_commitsJson = os.path.join( configDir, args.commits )
     filepath_authorsJson = os.path.join( configDir, args.authors )
-    filepath_pathsJson = os.path.join( configDir, args.paths_filename )
+    filepath_repositoryJson = os.path.join( configDir, args.repository )
 
-    repositoryDir = args.repository
+    if os.path.isfile( filepath_repositoryJson ):
+        repository = json.load( open( filepath_repositoryJson, 'r' ) )
+    else:
+        repository = {}
+
+    if 'root' in repository:
+        repositoryDir = os.path.join( configDir, repository['root'] )
+    else:
+        repositoryDir = args.root
     branch = args.branch
 
-    if os.path.isfile( filepath_pathsJson ):
-        allPaths = json.load( open( filepath_pathsJson, 'r' ) )
-        allPaths = map( lambda path: os.path.join( repositoryDir, path ), allPaths )
+    if 'paths' in repository:
+        allPaths = list( map( lambda path: os.path.join( repositoryDir, path ), repository['paths'] ) )
     else:
         allPaths = []
     allPaths.extend( args.paths )
