@@ -535,6 +535,7 @@ def main():
     commitCounter = 1
     allAuthors = set()
     missingAuthors = set()
+    tagsUsedForCommits = set()
     # see https://git-scm.com/docs/pretty-formats
     cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', branch]
     for log in call_nullSeperated( cmd, cwd=repositoryDir ):
@@ -552,6 +553,7 @@ def main():
             commit = Commit( commitCounter, commitHash, parents, author, email, date, message )
             if commit.commitHash in allTagsPerCommitHash:
                 commit.tags = allTagsPerCommitHash[commit.commitHash]
+                tagsUsedForCommits.update( commit.tags )
             commit.originalAuthor = originalAuthor
             global_allCommits.append( commit )
             global_allCommitsHash[commitHash] = commit
@@ -593,6 +595,8 @@ def main():
 
     # building window...
 
+    undefinedTags = sorted( tagsUsedForCommits - set( global_allTags ) )
+
     global_ui_commitList = QtWidgets.QTreeWidget()
     global_ui_commitList.setRootIsDecorated( False )
     global_ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
@@ -627,6 +631,7 @@ def main():
     ui_filterIncludeAreaLayout.addWidget( QtWidgets.QLabel( '<strong>show:</strong>' ) )
     filterNames = ['outside', 'untagged']
     filterNames.extend( global_allTags )
+    filterNames.extend( undefinedTags )
     for filterName in filterNames:
         filterCheckBox = QtWidgets.QCheckBox( filterName )
         global_ui_filterIncludeCheckBoxes.append( filterCheckBox )
@@ -641,7 +646,10 @@ def main():
     ui_filterObligatoryLayout = QtWidgets.QHBoxLayout()
     ui_filterObligatoryLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterObligatoryLayout.addWidget( QtWidgets.QLabel( '<strong>obligatory:</strong>' ) )
-    for filterName in global_allTags:
+    filterNames = []
+    filterNames.extend( global_allTags )
+    filterNames.extend( undefinedTags )
+    for filterName in filterNames:
         filterCheckBox = QtWidgets.QCheckBox( filterName )
         global_ui_filterObligatoryCheckBoxes.append( filterCheckBox )
         filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
@@ -653,7 +661,10 @@ def main():
     ui_filterExcludeLayout = QtWidgets.QHBoxLayout()
     ui_filterExcludeLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterExcludeLayout.addWidget( QtWidgets.QLabel( '<strong>exclude:</strong>' ) )
-    for filterName in global_allTags:
+    filterNames = []
+    filterNames.extend( global_allTags )
+    filterNames.extend( undefinedTags )
+    for filterName in filterNames:
         filterCheckBox = QtWidgets.QCheckBox( filterName )
         global_ui_filterExcludeCheckBoxes.append( filterCheckBox )
         filterCheckBox.stateChanged.connect( on_filterCheckBox_stateChanged )
@@ -705,6 +716,11 @@ def main():
         tagCheckBox = QtWidgets.QCheckBox( tag )
         global_ui_tagCheckBoxes.append( tagCheckBox )
         tagCheckBox.clicked.connect( on_tagCheckBox_clicked )
+        ui_tagAreaLayout.addWidget( tagCheckBox )
+    for tag in undefinedTags:
+        tagCheckBox = QtWidgets.QCheckBox( tag )
+        global_ui_tagCheckBoxes.append( tagCheckBox )
+        tagCheckBox.setEnabled( False )
         ui_tagAreaLayout.addWidget( tagCheckBox )
     ui_tagAreaLayout.addStretch()
     ui_tagAreaWidget = QtWidgets.QWidget()
