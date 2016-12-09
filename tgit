@@ -27,6 +27,7 @@ commitListItemColumn_commit = 1
 commitListItemColumn_lines = 2
 commitListItemColumn_tags = 3
 commitListItemColumn_author = 5
+filesListItemColumn_lines = 0
 filesListItemColumn_filename = 1
 
 global_ui_commitList = None
@@ -232,13 +233,13 @@ def on_commitList_currentItemChanged( current, before ):
         global_ui_filesList.clear()
         for file in global_selectedCommit.files:
             (status, name) = (file.status, file.name)
+            readableLines = str( file.added + file.removed )
+            item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
             if passesFilter( name ):
-                readableLines = str( file.added + file.removed )
-                item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
                 item.setForeground( filesListItemColumn_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
             else:
-                item = QtWidgets.QTreeWidgetItem( ['', name] )
-                item.setForeground( filesListItemColumn_filename, QtGui.QBrush( QtCore.Qt.lightGray ) )
+                item.setForeground( filesListItemColumn_lines, QtGui.QBrush( QtCore.Qt.lightGray ) )
+                item.setForeground( filesListItemColumn_filename, {'M':QtGui.QBrush( QtCore.Qt.lightGray ), 'A': QtGui.QBrush( QtGui.QColor(164,192,164) ), 'D': QtGui.QBrush( QtGui.QColor(255,192,192) )}[status] )
             global_ui_filesList.addTopLevelItem( item )
 
         # set parents/children background
