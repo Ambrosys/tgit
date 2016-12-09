@@ -45,6 +45,7 @@ optional arguments:
   --commits FILENAME    commits config file, default: tgit-commits.json
   --repository FILENAME
                         repository config file, default: tgit-repository.json
+  --no-diff             deactivate "automatically diff all files"
 ```
 
 ## Config files

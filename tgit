@@ -44,6 +44,7 @@ global_ui_filterAuthorCheckBoxes = []
 global_ui_filter_lineEdit = None
 global_ui_tagCheckBoxes = []
 global_ui_commitListItemHash = {}
+global_ui_diffViewerCheckBox = None
 global_selectedCommit = None
 global_allCommits = []
 global_allCommitsHash = {}
@@ -240,19 +241,6 @@ def on_commitList_currentItemChanged( current, before ):
                 item.setForeground( filesListItemColumn_filename, QtGui.QBrush( QtCore.Qt.lightGray ) )
             global_ui_filesList.addTopLevelItem( item )
 
-        cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
-        if includeDirectories or includeFiles:
-            cmd.extend( includeDirectories )
-            cmd.extend( includeFiles )
-        else:
-            cmd.append( '.' )
-        diff = call( cmd, cwd=repositoryDir )
-        conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
-        ansi = '\n'.join( diff )
-        html = conv.convert( ansi )
-        #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-        global_ui_diffViewer.setHtml( html )
-
         # set parents/children background
         family = []
         family.extend( global_selectedCommit.getParents( global_allCommitsHash ) )
@@ -262,6 +250,22 @@ def on_commitList_currentItemChanged( current, before ):
             global_previousBackgroundList.append( (item, item.background(0)) )
             for col in range( 0, item.columnCount() ):
                 item.setBackground( col, QtGui.QBrush( QtGui.QColor( 64, 128, 0, 32 ) ) )
+
+        if global_ui_diffViewerCheckBox.isChecked():
+            cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
+            if includeDirectories or includeFiles:
+                cmd.extend( includeDirectories )
+                cmd.extend( includeFiles )
+            else:
+                cmd.append( '.' )
+            diff = call( cmd, cwd=repositoryDir )
+            conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
+            ansi = '\n'.join( diff )
+            html = conv.convert( ansi )
+            #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
+            global_ui_diffViewer.setHtml( html )
+        else:
+            global_ui_diffViewer.setHtml( '<html><body style="background: black;"></body></html>' )
 
 @QtCore.pyqtSlot( QtCore.QPoint )
 def on_commitList_customContextMenuRequested( pos ):
@@ -588,6 +592,7 @@ def main():
     global global_ui_filter_lineEdit
     global global_ui_tagCheckBoxes
     global global_ui_commitListItemHash
+    global global_ui_diffViewerCheckBox
     global global_allCommits
     global global_allCommitsHash
     global global_allTags
@@ -604,6 +609,7 @@ def main():
     parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
     parser.add_argument( '--commits', metavar='FILENAME', type=str, default='tgit-commits.json', help = 'commits config file, default: %(default)s' )
     parser.add_argument( '--repository', metavar='FILENAME', type=str, default='tgit-repository.json', help = 'repository config file, default: %(default)s' )
+    parser.add_argument( '--no-diff', action='store_true', help = 'deactivate "automatically diff all files"' )
     args = parser.parse_args()
 
     if args.no_numstat and args.full_numstat:
@@ -795,6 +801,16 @@ def main():
     global_ui_diffViewer.setReadOnly( True )
     global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
+    global_ui_diffViewerCheckBox = QtWidgets.QCheckBox( 'automatically diff all files' )
+    global_ui_diffViewerCheckBox.setChecked( not args.no_diff )
+
+    ui_diffViewAreaLayout = QtWidgets.QVBoxLayout()
+    ui_diffViewAreaLayout.setContentsMargins( 0, 0, 0, 0 )
+    ui_diffViewAreaLayout.addWidget( global_ui_diffViewerCheckBox )
+    ui_diffViewAreaLayout.addWidget( global_ui_diffViewer )
+    ui_diffViewAreaWidget = QtWidgets.QWidget()
+    ui_diffViewAreaWidget.setLayout( ui_diffViewAreaLayout )
+
     global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'filter' )
     global_ui_filterAreaCheckBox.setChecked( True )
     # signals are assigned later
@@ -886,7 +902,7 @@ def main():
     ui_diffSplitter = QtWidgets.QSplitter()
     ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
     ui_diffSplitter.addWidget( global_ui_filesList )
-    ui_diffSplitter.addWidget( global_ui_diffViewer )
+    ui_diffSplitter.addWidget( ui_diffViewAreaWidget )
     ui_diffSplitter.setSizes( [1000, 3000] )
 
     ui_commitEditorLayout = QtWidgets.QVBoxLayout()
