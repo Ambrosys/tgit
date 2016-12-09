@@ -22,12 +22,12 @@ branch = None
 includeDirectories = []
 includeFiles = []
 
-treeIndex_index = 0
-treeIndex_commit = 1
-treeIndex_lines = 2
-treeIndex_tags = 3
-treeIndex_author = 5
-diffFilesIndex_filename = 1
+commitListItemColumn_index = 0
+commitListItemColumn_commit = 1
+commitListItemColumn_lines = 2
+commitListItemColumn_tags = 3
+commitListItemColumn_author = 5
+filesListItemColumn_filename = 1
 
 global_ui_commitList = None
 global_ui_commitListInfo = None
@@ -43,12 +43,13 @@ global_ui_filterExcludeCheckBoxes = []
 global_ui_filterAuthorCheckBoxes = []
 global_ui_filter_lineEdit = None
 global_ui_tagCheckBoxes = []
-global_ui_treeWidgetItemHash = {}
+global_ui_commitListItemHash = {}
 global_selectedCommit = None
 global_allCommits = []
 global_allCommitsHash = {}
 global_allTags = []
 global_allTagsGrouped = {}
+global_previousBackgroundList = []
 
 class CommitFile:
     def __init__( self, name ):
@@ -117,7 +118,11 @@ class Commit:
         for c in global_allCommits:
             if self.commitHash in c.parents:
                 children.append( c )
-        return children
+        return sorted( children, key=lambda c: c.index, reverse=True )
+
+    def getParents( self, commitsHash ):
+        parents = map( lambda h: commitsHash[h], self.parents )
+        return sorted( parents, key=lambda c: c.index, reverse=True )
 
     def getOnelinerHtml( self, withLink ):
         if withLink:
@@ -200,8 +205,15 @@ def on_commitList_currentItemChanged( current, before ):
     :type before: QtWidgets.QTreeWidgetItem
     """
     global global_selectedCommit
+    global global_previousBackgroundList
+    
+    # restore backgrounds
+    for (item, brush) in global_previousBackgroundList:
+        for col in range( 0, item.columnCount() ):
+            item.setBackground( col, brush )
+            
     if current:
-        global_selectedCommit = global_allCommitsHash[current.text( treeIndex_commit )]
+        global_selectedCommit = global_allCommitsHash[current.text( commitListItemColumn_commit )]
 
         for tagCheckBox in global_ui_tagCheckBoxes:
             tagCheckBox.setChecked( tagCheckBox.text() in global_selectedCommit.tags )
@@ -209,7 +221,7 @@ def on_commitList_currentItemChanged( current, before ):
         global_ui_commitInfo1.setText( global_selectedCommit.getOnelinerHtml( False ) )
 
         children = map( lambda c: '<strong>child:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
-        parents = map( lambda cHash: '<strong>parent:</strong> %s<br />' % global_allCommitsHash[cHash].getOnelinerHtml( True ), global_selectedCommit.parents )
+        parents = map( lambda c: '<strong>parent:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getParents( global_allCommitsHash ) )
         childrenParents = '%s\n%s' % ('\n'.join(children), '\n'.join(parents))
         if childrenParents[-6:] == '<br />':
             childrenParents = childrenParents[:-6]
@@ -222,10 +234,10 @@ def on_commitList_currentItemChanged( current, before ):
             if passesFilter( name ):
                 readableLines = str( file.added + file.removed )
                 item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
-                item.setForeground( diffFilesIndex_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
+                item.setForeground( filesListItemColumn_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
             else:
                 item = QtWidgets.QTreeWidgetItem( ['', name] )
-                item.setForeground( diffFilesIndex_filename, QtGui.QBrush( QtCore.Qt.lightGray ) )
+                item.setForeground( filesListItemColumn_filename, QtGui.QBrush( QtCore.Qt.lightGray ) )
             global_ui_filesList.addTopLevelItem( item )
 
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
@@ -241,6 +253,16 @@ def on_commitList_currentItemChanged( current, before ):
         #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
         global_ui_diffViewer.setHtml( html )
 
+        # set parents/children background
+        family = []
+        family.extend( global_selectedCommit.getParents( global_allCommitsHash ) )
+        family.extend( global_selectedCommit.getChildren() )
+        for c in family:
+            item = global_ui_commitListItemHash[c.commitHash]
+            global_previousBackgroundList.append( (item, item.background(0)) )
+            for col in range( 0, item.columnCount() ):
+                item.setBackground( col, QtGui.QBrush( QtGui.QColor( 64, 128, 0, 32 ) ) )
+
 @QtCore.pyqtSlot( QtCore.QPoint )
 def on_commitList_customContextMenuRequested( pos ):
     item = global_ui_commitList.itemAt( pos )
@@ -248,7 +270,7 @@ def on_commitList_customContextMenuRequested( pos ):
         showContextMenu( item, global_ui_commitList.viewport().mapToGlobal( pos ) )
 
 def updateTagsOfTreeWidgetItem( commit ):
-    global_ui_treeWidgetItemHash[commit.commitHash].setText( treeIndex_tags, commit.getTagsOneliner() )
+    global_ui_commitListItemHash[commit.commitHash].setText( commitListItemColumn_tags, commit.getTagsOneliner() )
 
 class TagMenuSlot( QtWidgets.QWidget ):
 
@@ -256,7 +278,7 @@ class TagMenuSlot( QtWidgets.QWidget ):
     def slot_addTag( self ):
         tag = self.sender().text()
         for item in global_ui_commitList.selectedItems():
-            commit = global_allCommitsHash[item.text( treeIndex_commit )]
+            commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
             if not tag in commit.tags:
                 commit.tags.append( tag )
                 updateTagsOfTreeWidgetItem( commit )
@@ -267,7 +289,7 @@ class TagMenuSlot( QtWidgets.QWidget ):
     def slot_removeTag( self ):
         tag = self.sender().text()
         for item in global_ui_commitList.selectedItems():
-            commit = global_allCommitsHash[item.text( treeIndex_commit )]
+            commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
             if tag in commit.tags:
                 commit.tags.remove( tag )
                 updateTagsOfTreeWidgetItem( commit )
@@ -296,7 +318,7 @@ def showContextMenu( item, globalPos ):
 def on_diffFiles_itemSelectionChanged():
     items = global_ui_filesList.selectedItems()
     if items:
-        files = map( lambda item: item.text( diffFilesIndex_filename ), items )
+        files = map( lambda item: item.text( filesListItemColumn_filename ), items )
         cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
         cmd.extend( files )
         diff = call( cmd, cwd=repositoryDir )
@@ -307,8 +329,8 @@ def on_diffFiles_itemSelectionChanged():
         global_ui_diffViewer.setHtml( html )
 
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
-def on_diffFiles_itemActivated( item ):
-    file = item.text( diffFilesIndex_filename )
+def on_filesList_itemActivated( item ):
+    file = item.text( filesListItemColumn_filename )
     thread = threading.Thread( target=diff_nonblocking, args=(global_selectedCommit, file) )
     thread.start()
 
@@ -329,7 +351,7 @@ def on_tagCheckBox_clicked():
 def on_label_linkActivated( link ):
     for item in global_ui_commitList.selectedItems():
         item.setSelected( False )
-    item = global_ui_treeWidgetItemHash[link]
+    item = global_ui_commitListItemHash[link]
     item.setSelected( True )
     global_ui_commitList.setCurrentItem( item )
 
@@ -388,7 +410,7 @@ def doFiltering():
 
     for i in range( 0, global_ui_commitList.topLevelItemCount() ):
         item = global_ui_commitList.topLevelItem( i )
-        commit = global_allCommitsHash[item.text( treeIndex_commit )]
+        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
         shouldBeVisible = True
 
         if global_ui_filterAreaCheckBox.isChecked():
@@ -565,7 +587,7 @@ def main():
     global global_ui_filterAuthorCheckBoxes
     global global_ui_filter_lineEdit
     global global_ui_tagCheckBoxes
-    global global_ui_treeWidgetItemHash
+    global global_ui_commitListItemHash
     global global_allCommits
     global global_allCommitsHash
     global global_allTags
@@ -759,11 +781,11 @@ def main():
         readableTags = commit.getTagsOneliner()
         readableMessage = commit.getMessageOneliner()
         item = QtWidgets.QTreeWidgetItem( [str(commit.index), commit.commitHash, readableLines, readableTags, commit.getDateString(), commit.author, readableMessage] )
-        global_ui_treeWidgetItemHash[commit.commitHash] = item
-        item.setFont( treeIndex_commit, courierFont )
-        item.setFont( treeIndex_author, boldFont )
-        item.setTextAlignment( treeIndex_index, QtCore.Qt.AlignRight )
-        item.setTextAlignment( treeIndex_lines, QtCore.Qt.AlignRight )
+        global_ui_commitListItemHash[commit.commitHash] = item
+        item.setFont( commitListItemColumn_commit, courierFont )
+        item.setFont( commitListItemColumn_author, boldFont )
+        item.setTextAlignment( commitListItemColumn_index, QtCore.Qt.AlignRight )
+        item.setTextAlignment( commitListItemColumn_lines, QtCore.Qt.AlignRight )
         if not somePassesFilter( commit.getFilenames(), False ):
             for i in range( 0, item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
@@ -859,7 +881,7 @@ def main():
     global_ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     global_ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     global_ui_filesList.itemSelectionChanged.connect( on_diffFiles_itemSelectionChanged )
-    global_ui_filesList.itemActivated.connect( on_diffFiles_itemActivated )
+    global_ui_filesList.itemActivated.connect( on_filesList_itemActivated )
 
     ui_diffSplitter = QtWidgets.QSplitter()
     ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
