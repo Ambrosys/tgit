@@ -33,6 +33,8 @@ filesListItemColumn_filename = 1
 global_ui_commitList = None
 global_ui_commitListInfo = None
 global_ui_diffViewer = None
+global_ui_followViewer = None
+global_ui_followViewerScrollArea = None
 global_ui_filesList = None
 global_ui_commitInfo1 = None
 global_ui_commitInfo2 = None
@@ -41,6 +43,7 @@ global_ui_filterIncludeSpecialCheckBoxes = []
 global_ui_filterIncludeCheckBoxes = []
 global_ui_filterObligatoryCheckBoxes = []
 global_ui_filterExcludeCheckBoxes = []
+global_ui_filterFindUntaggedCheckBoxes = []
 global_ui_filterAuthorCheckBoxes = []
 global_ui_filter_lineEdit = None
 global_ui_tagCheckBoxes = []
@@ -174,7 +177,7 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
         outputStrings = map( lambda s: str( s ), outputList )
     return outputStrings
 
-def passesFilter( filename ):
+def passesPathFilter( filename ):
     if not includeDirectories and not includeFiles:
         return True
     found = False
@@ -190,10 +193,10 @@ def passesFilter( filename ):
                 break
     return found
 
-def somePassesFilter( filenames, default ):
+def somePassesPathFilter( filenames, default ):
     passed = default
     for filename in filenames:
-        if passesFilter( filename ):
+        if passesPathFilter( filename ):
             passed = True
             break
         else:
@@ -224,7 +227,7 @@ def on_commitList_currentItemChanged( current, before ):
 
         children = map( lambda c: '<strong>child:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
         parents = map( lambda c: '<strong>parent:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getParents( global_allCommitsHash ) )
-        childrenParents = '%s\n%s' % ('\n'.join(children), '\n'.join(parents))
+        childrenParents = '%s%s' % (''.join(children), ''.join(parents))
         if childrenParents[-6:] == '<br />':
             childrenParents = childrenParents[:-6]
         author = '<strong>author:</strong> %s (%s), <strong>email:</strong> %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
@@ -235,7 +238,7 @@ def on_commitList_currentItemChanged( current, before ):
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
             item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
-            if passesFilter( name ):
+            if passesPathFilter( name ):
                 item.setForeground( filesListItemColumn_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
             else:
                 item.setForeground( filesListItemColumn_lines, QtGui.QBrush( QtCore.Qt.lightGray ) )
@@ -339,6 +342,19 @@ def on_filesList_itemActivated( item ):
     thread = threading.Thread( target=diff_nonblocking, args=(global_selectedCommit, file) )
     thread.start()
 
+@QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )
+def on_filesList_currentItemChanged( current, before ):
+    """
+    :type current: QtWidgets.QTreeWidgetItem
+    :type before: QtWidgets.QTreeWidgetItem
+    """
+    global_ui_followViewerScrollArea.setVisible( bool( current ) )
+    if current:
+        hashes = call( ['git', 'log', '--format=%h', '--follow', global_selectedCommit.commitHash, '--', current.text(filesListItemColumn_filename)], cwd=repositoryDir )
+        htmls = ['<strong>history:</strong><br />']
+        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
+        global_ui_followViewer.setText( ''.join( htmls ) )
+
 @QtCore.pyqtSlot()
 def on_tagCheckBox_clicked():
     if global_selectedCommit is None:
@@ -353,7 +369,7 @@ def on_tagCheckBox_clicked():
     doFiltering()
 
 @QtCore.pyqtSlot( str )
-def on_label_linkActivated( link ):
+def on_commitLinkActivated( link ):
     for item in global_ui_commitList.selectedItems():
         item.setSelected( False )
     item = global_ui_commitListItemHash[link]
@@ -403,6 +419,11 @@ def doFiltering():
         if filterCheckBox.isChecked():
             activeExcludeFilter.add( filterCheckBox.text() )
 
+    activeFindUntaggedFilter = set()
+    for filterCheckBox in global_ui_filterFindUntaggedCheckBoxes:
+        if filterCheckBox.isChecked():
+            activeFindUntaggedFilter.add( filterCheckBox.text() )
+
     activeAuthorFilter = set()
     for filterCheckBox in global_ui_filterAuthorCheckBoxes:
         if filterCheckBox.isChecked():
@@ -412,6 +433,16 @@ def doFiltering():
         filterRegex = re.compile( global_ui_filter_lineEdit.text(), re.IGNORECASE )
     except re.error:
         filterRegex = re.compile( r'.*' )
+
+    # follow files and find untagged commits
+    foundCommitHashes = set()
+    for c in global_allCommits:
+        if set( c.tags ) & activeFindUntaggedFilter:
+            for file in c.getFilenames():
+                if not passesPathFilter( file ):
+                    continue
+                hashes = call( ['git', 'log', '--format=%h', '--follow', c.commitHash, '--', file], cwd=repositoryDir )
+                foundCommitHashes.update( set( hashes ) )
 
     for i in range( 0, global_ui_commitList.topLevelItemCount() ):
         item = global_ui_commitList.topLevelItem( i )
@@ -436,7 +467,7 @@ def doFiltering():
                         break
 
             if shouldBeVisible:
-                if not 'consider all paths' in activeIncludeSpecialFilter and not somePassesFilter( commit.getFilenames(), False ):
+                if not 'consider all paths' in activeIncludeSpecialFilter and not somePassesPathFilter( commit.getFilenames(), False ):
                     shouldBeVisible = False
                 else:
                     foundATag = False
@@ -461,6 +492,10 @@ def doFiltering():
                                     found = True
                             if not found:
                                 shouldBeVisible = False
+
+            if not shouldBeVisible:
+                if not commit.tags and commit.commitHash in foundCommitHashes:
+                    shouldBeVisible = True
 
         item.setHidden( not shouldBeVisible )
 
@@ -533,6 +568,7 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
         ui_filterIncludeWidget = createTagCheckBoxes( groupTags, global_ui_filterIncludeCheckBoxes, True, doFiltering )
         ui_filterObligatoryWidget = createTagCheckBoxes( groupTags, global_ui_filterObligatoryCheckBoxes, False, doFiltering )
         ui_filterExcludeWidget = createTagCheckBoxes( groupTags, global_ui_filterExcludeCheckBoxes, False, doFiltering )
+        ui_filterFindUntaggedWidget = createTagCheckBoxes( groupTags, global_ui_filterFindUntaggedCheckBoxes, False, doFiltering )
 
         ui_filterIncludeScrollArea = QtWidgets.QScrollArea()
         ui_filterIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
@@ -543,10 +579,14 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
         ui_filterExcludeScrollArea = QtWidgets.QScrollArea()
         ui_filterExcludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
         ui_filterExcludeScrollArea.setWidget( ui_filterExcludeWidget )
+        ui_filterFindUntaggedScrollArea = QtWidgets.QScrollArea()
+        ui_filterFindUntaggedScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterFindUntaggedScrollArea.setWidget( ui_filterFindUntaggedWidget )
 
         ui_filterTabWidget.addTab( ui_filterIncludeScrollArea, 'include tags' )
         ui_filterTabWidget.addTab( ui_filterObligatoryScrollArea, 'obligatory tags' )
         ui_filterTabWidget.addTab( ui_filterExcludeScrollArea, 'exclude tags' )
+        ui_filterTabWidget.addTab( ui_filterFindUntaggedScrollArea, 'find untagged (following files)' )
 
     existsGroupWithSingleLetter = False # may happen if the group is auto-generated from first letter
     groupAuthors = collections.OrderedDict()
@@ -581,6 +621,8 @@ def main():
     global global_ui_commitList
     global global_ui_commitListInfo
     global global_ui_diffViewer
+    global global_ui_followViewer
+    global global_ui_followViewerScrollArea
     global global_ui_filesList
     global global_ui_commitInfo1
     global global_ui_commitInfo2
@@ -793,7 +835,7 @@ def main():
         item.setFont( commitListItemColumn_author, boldFont )
         item.setTextAlignment( commitListItemColumn_index, QtCore.Qt.AlignRight )
         item.setTextAlignment( commitListItemColumn_lines, QtCore.Qt.AlignRight )
-        if not somePassesFilter( commit.getFilenames(), False ):
+        if not somePassesPathFilter( commit.getFilenames(), False ):
             for i in range( 0, item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
         global_ui_commitList.addTopLevelItem( item )
@@ -802,13 +844,33 @@ def main():
     global_ui_diffViewer.setReadOnly( True )
     global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
+    global_ui_followViewer = QtWidgets.QLabel()
+    global_ui_followViewer.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    global_ui_followViewer.linkActivated.connect( on_commitLinkActivated )
+    ui_followViewerLayout = QtWidgets.QVBoxLayout()
+    ui_followViewerLayout.addWidget( global_ui_followViewer )
+    ui_followViewerLayout.addStretch()
+    ui_followViewerWidget = QtWidgets.QWidget()
+    ui_followViewerWidget.setLayout( ui_followViewerLayout )
+    global_ui_followViewerScrollArea = QtWidgets.QScrollArea()
+    #global_ui_followViewerScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+    global_ui_followViewerScrollArea.setWidgetResizable( True )
+    global_ui_followViewerScrollArea.setWidget( ui_followViewerWidget )
+    global_ui_followViewerScrollArea.setHidden( True )
+
+    ui_fileViewers = QtWidgets.QSplitter()
+    ui_fileViewers.setOrientation( QtCore.Qt.Horizontal )
+    ui_fileViewers.addWidget( global_ui_diffViewer )
+    ui_fileViewers.addWidget( global_ui_followViewerScrollArea )
+    ui_fileViewers.setSizes( [3000, 1000] )
+
     global_ui_diffViewerCheckBox = QtWidgets.QCheckBox( 'automatically diff all files' )
     global_ui_diffViewerCheckBox.setChecked( not args.no_diff )
 
     ui_diffViewAreaLayout = QtWidgets.QVBoxLayout()
     ui_diffViewAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_diffViewAreaLayout.addWidget( global_ui_diffViewerCheckBox )
-    ui_diffViewAreaLayout.addWidget( global_ui_diffViewer )
+    ui_diffViewAreaLayout.addWidget( ui_fileViewers )
     ui_diffViewAreaWidget = QtWidgets.QWidget()
     ui_diffViewAreaWidget.setLayout( ui_diffViewAreaLayout )
 
@@ -883,13 +945,13 @@ def main():
     global_ui_commitInfo1.setFont( font )
     global_ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
     global_ui_commitInfo1.setWordWrap( True )
-    global_ui_commitInfo1.linkActivated.connect( on_label_linkActivated )
+    global_ui_commitInfo1.linkActivated.connect( on_commitLinkActivated )
 
     global_ui_commitInfo2 = QtWidgets.QLabel()
     global_ui_commitInfo2.setText( 'meta data' )
     global_ui_commitInfo2.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
     global_ui_commitInfo2.setWordWrap( True )
-    global_ui_commitInfo2.linkActivated.connect( on_label_linkActivated )
+    global_ui_commitInfo2.linkActivated.connect( on_commitLinkActivated )
 
     global_ui_filesList = QtWidgets.QTreeWidget()
     global_ui_filesList.setRootIsDecorated( False )
@@ -899,6 +961,7 @@ def main():
     global_ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     global_ui_filesList.itemSelectionChanged.connect( on_diffFiles_itemSelectionChanged )
     global_ui_filesList.itemActivated.connect( on_filesList_itemActivated )
+    global_ui_filesList.currentItemChanged.connect( on_filesList_currentItemChanged )
 
     ui_diffSplitter = QtWidgets.QSplitter()
     ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
