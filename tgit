@@ -436,7 +436,7 @@ def doFiltering():
                         break
 
             if shouldBeVisible:
-                if not 'outside' in activeIncludeSpecialFilter and not somePassesFilter( commit.getFilenames(), False ):
+                if not 'consider all paths' in activeIncludeSpecialFilter and not somePassesFilter( commit.getFilenames(), False ):
                     shouldBeVisible = False
                 else:
                     foundATag = False
@@ -445,7 +445,7 @@ def doFiltering():
                             foundATag = True
                             break
                     if not foundATag:
-                        if commit.tags or not 'untagged' in activeIncludeSpecialFilter:
+                        if commit.tags or not 'include untagged' in activeIncludeSpecialFilter:
                             shouldBeVisible = False
 
                     if shouldBeVisible:
@@ -731,7 +731,7 @@ def main():
             global_allCommitsHash[commitHash] = commit
             commitCounter += 1
     if os.path.isfile( filepath_authorsJson ):
-        for author in missingAuthors:
+        for author in sorted( list( missingAuthors ) ):
             print( 'Warning: author "%s" missing in %s' % (author, filepath_authorsJson) )
     for newGroup in sorted( newGroups.keys() ):
         allAuthorsGrouped[newGroup] = newGroups[newGroup]
@@ -812,7 +812,7 @@ def main():
     ui_diffViewAreaWidget = QtWidgets.QWidget()
     ui_diffViewAreaWidget.setLayout( ui_diffViewAreaLayout )
 
-    global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'filter' )
+    global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'enable filter' )
     global_ui_filterAreaCheckBox.setChecked( True )
     # signals are assigned later
 
@@ -824,12 +824,12 @@ def main():
     ui_filterIncludeSpecialAreaLineLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( ui_vline )
-    for tag in ['outside', 'untagged']:
+    for tag in ['consider all paths', 'include untagged']:
         filterCheckBox = QtWidgets.QCheckBox( tag )
         global_ui_filterIncludeSpecialCheckBoxes.append( filterCheckBox )
-        if tag != 'outside':
+        if tag != 'consider all paths':
             filterCheckBox.setChecked( True )
-        if tag == 'untagged' and not global_allTagsGrouped and not undefinedTags:
+        if tag == 'include untagged' and not global_allTagsGrouped and not undefinedTags:
             filterCheckBox.setHidden( True )
         filterCheckBox.clicked.connect( doFiltering )
         ui_filterIncludeSpecialAreaLineLayout.addWidget( filterCheckBox )
