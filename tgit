@@ -15,6 +15,7 @@ import datetime
 import re
 import argparse
 import functools
+import copy
 
 repositoryDir = None
 branch = None
@@ -43,9 +44,11 @@ global_ui_filterIncludeSpecialCheckBoxes = []
 global_ui_filterIncludeCheckBoxes = []
 global_ui_filterObligatoryCheckBoxes = []
 global_ui_filterExcludeCheckBoxes = []
-global_ui_filterFindUntaggedCheckBoxes = []
+global_ui_filterFindFilesCheckBoxes = []
+global_ui_filterFindFilesIncludeCheckBoxes = []
 global_ui_filterAuthorCheckBoxes = []
-global_ui_filter_lineEdit = None
+global_ui_searchFilterLineEdit = None
+global_ui_searchFilterCheckBoxes = []
 global_ui_tagCheckBoxes = []
 global_ui_commitListItemHash = {}
 global_ui_diffViewerCheckBox = None
@@ -91,6 +94,7 @@ class Commit:
         self.added = 0
         self.removed = 0
         self.tags = []
+        self.hash_filename_history = {}
 
     def _ensureFile( self, filename ):
         if filename in self.filesHash:
@@ -139,10 +143,20 @@ class Commit:
         return self.message.replace( '\n', ' ' )
 
     def getTagsOneliner( self ):
-        return ', '.join( self.tags )
+        tags = []
+        for tag in global_allTags:
+            if tag in self.tags:
+                tags.append( tag )
+        tags.extend( sorted( list( set( self.tags ) - set( global_allTags ) ) ) )
+        return ', '.join( tags )
 
     def getDateString( self ):
         return self.date.strftime( '%Y-%m-%d %H:%M:%S' )
+
+    def getHistory( self, filename ):
+        if not filename in self.hash_filename_history:
+            self.hash_filename_history[filename] = call( ['git', 'log', '--format=%h', '--follow', self.commitHash, '--', filename], cwd=repositoryDir )
+        return self.hash_filename_history[filename]
 
 def diff_nonblocking( commit, file ):
     file1content = call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=repositoryDir )
@@ -350,7 +364,7 @@ def on_filesList_currentItemChanged( current, before ):
     """
     global_ui_followViewerScrollArea.setVisible( bool( current ) )
     if current:
-        hashes = call( ['git', 'log', '--format=%h', '--follow', global_selectedCommit.commitHash, '--', current.text(filesListItemColumn_filename)], cwd=repositoryDir )
+        hashes = global_selectedCommit.getHistory( current.text(filesListItemColumn_filename) )
         htmls = ['<strong>history:</strong><br />']
         htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
         global_ui_followViewer.setText( ''.join( htmls ) )
@@ -419,29 +433,39 @@ def doFiltering():
         if filterCheckBox.isChecked():
             activeExcludeFilter.add( filterCheckBox.text() )
 
-    activeFindUntaggedFilter = set()
-    for filterCheckBox in global_ui_filterFindUntaggedCheckBoxes:
+    activeFindFilesFilter = set()
+    for filterCheckBox in global_ui_filterFindFilesCheckBoxes:
         if filterCheckBox.isChecked():
-            activeFindUntaggedFilter.add( filterCheckBox.text() )
+            activeFindFilesFilter.add( filterCheckBox.text() )
+
+    activeFindFilesIncludeFilter = set()
+    for filterCheckBox in global_ui_filterFindFilesIncludeCheckBoxes:
+        if filterCheckBox.isChecked():
+            activeFindFilesIncludeFilter.add( filterCheckBox.text() )
 
     activeAuthorFilter = set()
     for filterCheckBox in global_ui_filterAuthorCheckBoxes:
         if filterCheckBox.isChecked():
             activeAuthorFilter.add( filterCheckBox.text() )
 
+    searchFilter = set()
+    for filterCheckBox in global_ui_searchFilterCheckBoxes:
+        if filterCheckBox.isChecked():
+            searchFilter.add( filterCheckBox.text() )
+
     try:
-        filterRegex = re.compile( global_ui_filter_lineEdit.text(), re.IGNORECASE )
+        filterRegex = re.compile( global_ui_searchFilterLineEdit.text(), re.IGNORECASE )
     except re.error:
         filterRegex = re.compile( r'.*' )
 
-    # follow files and find untagged commits
+    # follow files and find commits
     foundCommitHashes = set()
     for c in global_allCommits:
-        if set( c.tags ) & activeFindUntaggedFilter:
-            for file in c.getFilenames():
-                if not passesPathFilter( file ):
+        if set( c.tags ) & activeFindFilesFilter:
+            for filename in c.getFilenames():
+                if not passesPathFilter( filename ):
                     continue
-                hashes = call( ['git', 'log', '--format=%h', '--follow', c.commitHash, '--', file], cwd=repositoryDir )
+                hashes = c.getHistory( filename )
                 foundCommitHashes.update( set( hashes ) )
 
     for i in range( 0, global_ui_commitList.topLevelItemCount() ):
@@ -476,26 +500,40 @@ def doFiltering():
                             foundATag = True
                             break
                     if not foundATag:
-                        if commit.tags or not 'include untagged' in activeIncludeSpecialFilter:
+                        if commit.tags or not 'untagged' in activeIncludeFilter:
                             shouldBeVisible = False
 
                     if shouldBeVisible:
-                        if global_ui_filter_lineEdit.text():
+                        if global_ui_searchFilterLineEdit.text():
                             found = False
                             if not found:
-                                for filename in commit.getFilenames():
-                                    if filterRegex.search( filename ):
-                                        found = True
-                                        break
+                                if 'files in paths' in searchFilter or 'files not in paths' in searchFilter:
+                                    for filename in commit.getFilenames():
+                                        if filterRegex.search( filename ):
+                                            if passesPathFilter( filename ) and 'files in paths' in searchFilter:
+                                                found = True
+                                                break
+                                            elif not passesPathFilter( filename ) and 'files not in paths' in searchFilter:
+                                                found = True
+                                                break
                             if not found:
-                                if filterRegex.search( commit.message ):
+                                if 'message' in searchFilter and filterRegex.search( commit.message ):
                                     found = True
                             if not found:
                                 shouldBeVisible = False
 
             if not shouldBeVisible:
-                if not commit.tags and commit.commitHash in foundCommitHashes:
-                    shouldBeVisible = True
+                if commit.commitHash in foundCommitHashes:
+                    foundATag = False
+                    for tag in commit.tags:
+                        if tag in activeFindFilesIncludeFilter:
+                            foundATag = True
+                            break
+                    if not foundATag:
+                        if not commit.tags and 'untagged' in activeFindFilesIncludeFilter:
+                            foundATag = True
+                    if foundATag:
+                        shouldBeVisible = True
 
         item.setHidden( not shouldBeVisible )
 
@@ -565,10 +603,13 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
     if groupTags:
         ui_filterTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
 
-        ui_filterIncludeWidget = createTagCheckBoxes( groupTags, global_ui_filterIncludeCheckBoxes, True, doFiltering )
+        groupTagsWithUntagged = copy.deepcopy( groupTags )
+        groupTagsWithUntagged['special'] = (True, ['untagged'])
+        ui_filterIncludeWidget = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes, True, doFiltering )
         ui_filterObligatoryWidget = createTagCheckBoxes( groupTags, global_ui_filterObligatoryCheckBoxes, False, doFiltering )
         ui_filterExcludeWidget = createTagCheckBoxes( groupTags, global_ui_filterExcludeCheckBoxes, False, doFiltering )
-        ui_filterFindUntaggedWidget = createTagCheckBoxes( groupTags, global_ui_filterFindUntaggedCheckBoxes, False, doFiltering )
+        ui_filterFindFilesWidget = createTagCheckBoxes( groupTags, global_ui_filterFindFilesCheckBoxes, False, doFiltering )
+        ui_filterFindFilesIncludeWidget = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterFindFilesIncludeCheckBoxes, True, doFiltering )
 
         ui_filterIncludeScrollArea = QtWidgets.QScrollArea()
         ui_filterIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
@@ -579,14 +620,26 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
         ui_filterExcludeScrollArea = QtWidgets.QScrollArea()
         ui_filterExcludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
         ui_filterExcludeScrollArea.setWidget( ui_filterExcludeWidget )
-        ui_filterFindUntaggedScrollArea = QtWidgets.QScrollArea()
-        ui_filterFindUntaggedScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterFindUntaggedScrollArea.setWidget( ui_filterFindUntaggedWidget )
+        ui_filterFindFilesScrollArea = QtWidgets.QScrollArea()
+        ui_filterFindFilesScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterFindFilesScrollArea.setWidget( ui_filterFindFilesWidget )
+        ui_filterFindFilesIncludeScrollArea = QtWidgets.QScrollArea()
+        ui_filterFindFilesIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterFindFilesIncludeScrollArea.setWidget( ui_filterFindFilesIncludeWidget )
+
+        ui_filterFindFilesTabWidget = QtWidgets.QTabWidget()
+        ui_filterFindFilesTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
+        ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesScrollArea, 'follow files of tags' )
+        ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesIncludeScrollArea, 'include tags' )
+        ui_filterFindFilesTabWidgetLayout = QtWidgets.QVBoxLayout()
+        ui_filterFindFilesTabWidgetLayout.addWidget( ui_filterFindFilesTabWidget )
+        ui_filterFindFilesTabWidgetWidget = QtWidgets.QWidget()
+        ui_filterFindFilesTabWidgetWidget.setLayout( ui_filterFindFilesTabWidgetLayout )
 
         ui_filterTabWidget.addTab( ui_filterIncludeScrollArea, 'include tags' )
         ui_filterTabWidget.addTab( ui_filterObligatoryScrollArea, 'obligatory tags' )
         ui_filterTabWidget.addTab( ui_filterExcludeScrollArea, 'exclude tags' )
-        ui_filterTabWidget.addTab( ui_filterFindUntaggedScrollArea, 'find untagged (following files)' )
+        ui_filterTabWidget.addTab( ui_filterFindFilesTabWidgetWidget, 'find files' )
 
     existsGroupWithSingleLetter = False # may happen if the group is auto-generated from first letter
     groupAuthors = collections.OrderedDict()
@@ -632,7 +685,7 @@ def main():
     global global_ui_filterObligatoryCheckBoxes
     global global_ui_filterExcludeCheckBoxes
     global global_ui_filterAuthorCheckBoxes
-    global global_ui_filter_lineEdit
+    global global_ui_searchFilterLineEdit
     global global_ui_tagCheckBoxes
     global global_ui_commitListItemHash
     global global_ui_diffViewerCheckBox
@@ -886,13 +939,9 @@ def main():
     ui_filterIncludeSpecialAreaLineLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( ui_vline )
-    for tag in ['consider all paths', 'include untagged']:
+    for tag in ['consider all paths']:
         filterCheckBox = QtWidgets.QCheckBox( tag )
         global_ui_filterIncludeSpecialCheckBoxes.append( filterCheckBox )
-        if tag != 'consider all paths':
-            filterCheckBox.setChecked( True )
-        if tag == 'include untagged' and not global_allTagsGrouped and not undefinedTags:
-            filterCheckBox.setHidden( True )
         filterCheckBox.clicked.connect( doFiltering )
         ui_filterIncludeSpecialAreaLineLayout.addWidget( filterCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addStretch()
@@ -901,14 +950,26 @@ def main():
 
     ui_filterTabWidget = createFilterTabWidget( global_allTagsGrouped, undefinedTags, allAuthorsGrouped )
 
-    global_ui_filter_lineEdit = QtWidgets.QLineEdit()
-    #global_ui_filter_lineEdit.editingFinished.connect( doFiltering )
-    global_ui_filter_lineEdit.textEdited.connect( doFiltering )
+    global_ui_searchFilterLineEdit = QtWidgets.QLineEdit()
+    #global_ui_searchFilterLineEdit.editingFinished.connect( doFiltering )
+    global_ui_searchFilterLineEdit.textEdited.connect( doFiltering )
+
+    ui_filterSearchAreaLayout = QtWidgets.QHBoxLayout()
+    ui_filterSearchAreaLayout.setContentsMargins( 0, 0, 0, 0 )
+    ui_filterSearchAreaLayout.addWidget( global_ui_searchFilterLineEdit )
+    for searchLocation in ['message', 'files in paths', 'files not in paths']:
+        filterCheckBox = QtWidgets.QCheckBox( searchLocation )
+        global_ui_searchFilterCheckBoxes.append( filterCheckBox )
+        filterCheckBox.setChecked( True )
+        filterCheckBox.clicked.connect( doFiltering )
+        ui_filterSearchAreaLayout.addWidget( filterCheckBox )
+    ui_filterSearchAreaWidget = QtWidgets.QWidget()
+    ui_filterSearchAreaWidget.setLayout( ui_filterSearchAreaLayout )
 
     ui_filterAreaLayout = QtWidgets.QVBoxLayout()
     ui_filterAreaLayout.addWidget( ui_filterIncludeSpecialAreaLineWidget )
     ui_filterAreaLayout.addWidget( ui_filterTabWidget )
-    ui_filterAreaLayout.addWidget( global_ui_filter_lineEdit )
+    ui_filterAreaLayout.addWidget( ui_filterSearchAreaWidget )
     ui_filterAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterAreaWidget = QtWidgets.QWidget()
     ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
@@ -916,7 +977,7 @@ def main():
     for ui_filterIncludeSpecialCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
         global_ui_filterAreaCheckBox.toggled.connect( ui_filterIncludeSpecialCheckBox.setEnabled )
     global_ui_filterAreaCheckBox.toggled.connect( ui_filterTabWidget.setEnabled )
-    global_ui_filterAreaCheckBox.toggled.connect( global_ui_filter_lineEdit.setEnabled )
+    global_ui_filterAreaCheckBox.toggled.connect( global_ui_searchFilterLineEdit.setEnabled )
     global_ui_filterAreaCheckBox.clicked.connect( doFiltering )
 
     groupTags = collections.OrderedDict()
