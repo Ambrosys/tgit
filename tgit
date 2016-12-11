@@ -500,7 +500,7 @@ def doFiltering():
                             foundATag = True
                             break
                     if not foundATag:
-                        if commit.tags or not 'untagged' in activeIncludeFilter:
+                        if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter):
                             shouldBeVisible = False
 
                     if shouldBeVisible:
@@ -530,7 +530,7 @@ def doFiltering():
                             foundATag = True
                             break
                     if not foundATag:
-                        if not commit.tags and 'untagged' in activeFindFilesIncludeFilter:
+                        if not commit.tags or (global_allTags and not 'untagged' in activeFindFilesIncludeFilter):
                             foundATag = True
                     if foundATag:
                         shouldBeVisible = True
