@@ -22,6 +22,7 @@ branch = None
 
 includeDirectories = []
 includeFiles = []
+excludePatterns = [] # note: not used for git commands
 
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1
@@ -41,11 +42,13 @@ global_ui_commitInfo1 = None
 global_ui_commitInfo2 = None
 global_ui_filterAreaCheckBox = None
 global_ui_filterIncludeSpecialCheckBoxes = []
-global_ui_filterIncludeCheckBoxes = []
+global_ui_filterIncludeCheckBoxes1 = []
+global_ui_filterIncludeCheckBoxes2 = []
 global_ui_filterObligatoryCheckBoxes = []
 global_ui_filterExcludeCheckBoxes = []
 global_ui_filterFindFilesCheckBoxes = []
 global_ui_filterFindFilesIncludeCheckBoxes = []
+global_ui_filterFindFilesForwardCheckBox = None
 global_ui_filterAuthorCheckBoxes = []
 global_ui_searchFilterLineEdit = None
 global_ui_searchFilterCheckBoxes = []
@@ -155,7 +158,8 @@ class Commit:
 
     def getHistory( self, filename ):
         if not filename in self.hash_filename_history:
-            self.hash_filename_history[filename] = call( ['git', 'log', '--format=%h', '--follow', self.commitHash, '--', filename], cwd=repositoryDir )
+            history = call( ['git', 'log', '--format=%h', '--follow', self.commitHash, '--', filename], cwd=repositoryDir )
+            self.hash_filename_history[filename] = history[1:] # dismiss self
         return self.hash_filename_history[filename]
 
 def diff_nonblocking( commit, file ):
@@ -193,8 +197,9 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
 
 def passesPathFilter( filename ):
     if not includeDirectories and not includeFiles:
-        return True
-    found = False
+        found = True
+    else:
+        found = False
     if not found:
         for include in includeDirectories:
             if filename[:len(include)+1] == '%s/' % include:
@@ -204,6 +209,11 @@ def passesPathFilter( filename ):
         for include in includeFiles:
             if filename == include:
                 found = True
+                break
+    if found:
+        for exclude in excludePatterns:
+            if exclude.match( filename ):
+                found = False
                 break
     return found
 
@@ -418,10 +428,15 @@ def doFiltering():
         if filterCheckBox.isChecked():
             activeIncludeSpecialFilter.add( filterCheckBox.text() )
 
-    activeIncludeFilter = set()
-    for filterCheckBox in global_ui_filterIncludeCheckBoxes:
+    activeIncludeFilter1 = set()
+    for filterCheckBox in global_ui_filterIncludeCheckBoxes1:
         if filterCheckBox.isChecked():
-            activeIncludeFilter.add( filterCheckBox.text() )
+            activeIncludeFilter1.add( filterCheckBox.text() )
+
+    activeIncludeFilter2 = set()
+    for filterCheckBox in global_ui_filterIncludeCheckBoxes2:
+        if filterCheckBox.isChecked():
+            activeIncludeFilter2.add( filterCheckBox.text() )
 
     activeObligatoryFilter = set()
     for filterCheckBox in global_ui_filterObligatoryCheckBoxes:
@@ -458,7 +473,7 @@ def doFiltering():
     except re.error:
         filterRegex = re.compile( r'.*' )
 
-    # follow files and find commits
+    # follow files and find commits (back in history):
     foundCommitHashes = set()
     for c in global_allCommits:
         if set( c.tags ) & activeFindFilesFilter:
@@ -467,6 +482,28 @@ def doFiltering():
                     continue
                 hashes = c.getHistory( filename )
                 foundCommitHashes.update( set( hashes ) )
+
+    # follow files and find commits (forward in history):
+    if global_ui_filterFindFilesForwardCheckBox and global_ui_filterFindFilesForwardCheckBox.isChecked():
+        # 1. find last commit with specified tags
+        lastCommit = None
+        for c in global_allCommits:
+            if set( c.tags ) & activeFindFilesFilter:
+                lastCommit = c
+                break
+        # 2. find all commits after the commit found in (2) that have files whose
+        # history crosses a commit with specified tags
+        if lastCommit:
+            for c in reversed( global_allCommits ):
+                if c == lastCommit:
+                    break
+                for filename in c.getFilenames():
+                    if not passesPathFilter( filename ):
+                        continue
+                    hashes = c.getHistory( filename )
+                    for hash in hashes:
+                        if set( global_allCommitsHash[hash].tags ) & activeFindFilesFilter:
+                            foundCommitHashes.add( c.commitHash )
 
     for i in range( 0, global_ui_commitList.topLevelItemCount() ):
         item = global_ui_commitList.topLevelItem( i )
@@ -494,14 +531,25 @@ def doFiltering():
                 if not 'consider all paths' in activeIncludeSpecialFilter and not somePassesPathFilter( commit.getFilenames(), False ):
                     shouldBeVisible = False
                 else:
-                    foundATag = False
-                    for tag in commit.tags:
-                        if tag in activeIncludeFilter:
-                            foundATag = True
-                            break
-                    if not foundATag:
-                        if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter):
-                            shouldBeVisible = False
+                    if shouldBeVisible:
+                        foundATag = False
+                        for tag in commit.tags:
+                            if tag in activeIncludeFilter1:
+                                foundATag = True
+                                break
+                        if not foundATag:
+                            if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter1):
+                                shouldBeVisible = False
+
+                    if shouldBeVisible:
+                        foundATag = False
+                        for tag in commit.tags:
+                            if tag in activeIncludeFilter2:
+                                foundATag = True
+                                break
+                        if not foundATag:
+                            if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter2):
+                                shouldBeVisible = False
 
                     if shouldBeVisible:
                         if global_ui_searchFilterLineEdit.text():
@@ -593,6 +641,8 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
     return ui_tagGridWidget
 
 def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped ):
+    global global_ui_filterFindFilesForwardCheckBox
+
     groupTags = collections.OrderedDict()
     for group in global_allTagsGrouped:
         groupTags[group] = (True, definedTagsGrouped[group])
@@ -605,15 +655,19 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
 
         groupTagsWithUntagged = copy.deepcopy( groupTags )
         groupTagsWithUntagged['special'] = (True, ['untagged'])
-        ui_filterIncludeWidget = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes, True, doFiltering )
+        ui_filterIncludeWidget1 = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes1, True, doFiltering )
+        ui_filterIncludeWidget2 = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes2, True, doFiltering )
         ui_filterObligatoryWidget = createTagCheckBoxes( groupTags, global_ui_filterObligatoryCheckBoxes, False, doFiltering )
         ui_filterExcludeWidget = createTagCheckBoxes( groupTags, global_ui_filterExcludeCheckBoxes, False, doFiltering )
         ui_filterFindFilesWidget = createTagCheckBoxes( groupTags, global_ui_filterFindFilesCheckBoxes, False, doFiltering )
         ui_filterFindFilesIncludeWidget = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterFindFilesIncludeCheckBoxes, True, doFiltering )
 
-        ui_filterIncludeScrollArea = QtWidgets.QScrollArea()
-        ui_filterIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterIncludeScrollArea.setWidget( ui_filterIncludeWidget )
+        ui_filterIncludeScrollArea1 = QtWidgets.QScrollArea()
+        ui_filterIncludeScrollArea1.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterIncludeScrollArea1.setWidget( ui_filterIncludeWidget1 )
+        ui_filterIncludeScrollArea2 = QtWidgets.QScrollArea()
+        ui_filterIncludeScrollArea2.setFrameShape( QtWidgets.QFrame.NoFrame )
+        ui_filterIncludeScrollArea2.setWidget( ui_filterIncludeWidget2 )
         ui_filterObligatoryScrollArea = QtWidgets.QScrollArea()
         ui_filterObligatoryScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
         ui_filterObligatoryScrollArea.setWidget( ui_filterObligatoryWidget )
@@ -627,16 +681,21 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
         ui_filterFindFilesIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
         ui_filterFindFilesIncludeScrollArea.setWidget( ui_filterFindFilesIncludeWidget )
 
+        global_ui_filterFindFilesForwardCheckBox = QtWidgets.QCheckBox( 'also search forward (slow)' )
+        global_ui_filterFindFilesForwardCheckBox.setChecked( False )
+
         ui_filterFindFilesTabWidget = QtWidgets.QTabWidget()
         ui_filterFindFilesTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
         ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesScrollArea, 'follow files of tags' )
         ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesIncludeScrollArea, 'include tags' )
         ui_filterFindFilesTabWidgetLayout = QtWidgets.QVBoxLayout()
+        ui_filterFindFilesTabWidgetLayout.addWidget( global_ui_filterFindFilesForwardCheckBox )
         ui_filterFindFilesTabWidgetLayout.addWidget( ui_filterFindFilesTabWidget )
         ui_filterFindFilesTabWidgetWidget = QtWidgets.QWidget()
         ui_filterFindFilesTabWidgetWidget.setLayout( ui_filterFindFilesTabWidgetLayout )
 
-        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea, 'include tags' )
+        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea1, 'include tags 1' )
+        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea2, 'include tags 2' )
         ui_filterTabWidget.addTab( ui_filterObligatoryScrollArea, 'obligatory tags' )
         ui_filterTabWidget.addTab( ui_filterExcludeScrollArea, 'exclude tags' )
         ui_filterTabWidget.addTab( ui_filterFindFilesTabWidgetWidget, 'find files' )
@@ -668,6 +727,7 @@ def main():
 
     global includeDirectories
     global includeFiles
+    global excludePatterns
     global repositoryDir
     global branch
 
@@ -680,11 +740,6 @@ def main():
     global global_ui_commitInfo1
     global global_ui_commitInfo2
     global global_ui_filterAreaCheckBox
-    global global_ui_filterIncludeSpecialCheckBoxes
-    global global_ui_filterIncludeCheckBoxes
-    global global_ui_filterObligatoryCheckBoxes
-    global global_ui_filterExcludeCheckBoxes
-    global global_ui_filterAuthorCheckBoxes
     global global_ui_searchFilterLineEdit
     global global_ui_tagCheckBoxes
     global global_ui_commitListItemHash
@@ -738,12 +793,14 @@ def main():
     branch = args.branch
 
     if 'paths' in repository:
-        allPaths = list( map( lambda path: os.path.join( repositoryDir, path ), repository['paths'] ) )
+        allPaths = list( map( lambda path: path if path[0] == ':' else os.path.join( repositoryDir, path ), repository['paths'] ) )
     else:
         allPaths = []
     allPaths.extend( args.paths )
     for path in allPaths:
-        if os.path.isdir( path ):
+        if path[0] == ':': # exclude pattern
+            excludePatterns.append( re.compile( path[1:] ) )
+        elif os.path.isdir( path ):
             includeDirectories.append( os.path.relpath( path, repositoryDir ) )
         elif os.path.isfile( path ):
             includeFiles.append( os.path.relpath( path, repositoryDir ) )

@@ -48,6 +48,31 @@ optional arguments:
   --no-diff             deactivate "automatically diff all files"
 ```
 
+## Notes
+
+### paths
+
+Paths given are used to restrict git log commands and to limit the "find file"
+filter. If commits contain files that match, unmatched files are still listed in
+the files list but are greyed out.
+
+You can give exclude regex patterns by prepending the path with a colon, for
+example "```:.*\\bfiles\\.cmake```".
+These are not used in git log commands but to limit the "find file" filter.
+
+### Filter
+
+The GUI has several commit filters. Most of them are self-explanatory and not
+described here.
+
+#### "find files" filter
+
+This filter analyzes commits with one of the specified tags and selects all
+commits related to them. Related means that they have files which are getting
+modified by the analyzed commits (backward-search in history, see also
+```git log --follow```) or that they have files which were modified by the
+analyzed commits in the past (forward-search in history).
+
 ## Config files
 
 Each config file is optional. But to be able to tag commits `tgit-tags.json`
@@ -119,7 +144,7 @@ This file can define two things (each are optional):
 - The root directory of the repository
   (overrides positional argument `root`).
 - Paths relative to the repository root to restrict the commits list
-  (additive to `--paths`).
+  (additive to `--paths`) or exclude patterns (prepended with a colon).
 
 Example:
 ```json
@@ -128,7 +153,8 @@ Example:
   "paths": [
     "dir",
     "file",
-    "sub/path"
+    "sub/path",
+    ":exclude-pattern"
   ]
 }
 ```
