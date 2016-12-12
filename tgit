@@ -683,6 +683,7 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
 
         global_ui_filterFindFilesForwardCheckBox = QtWidgets.QCheckBox( 'also search forward (slow)' )
         global_ui_filterFindFilesForwardCheckBox.setChecked( False )
+        global_ui_filterFindFilesForwardCheckBox.clicked.connect( doFiltering )
 
         ui_filterFindFilesTabWidget = QtWidgets.QTabWidget()
         ui_filterFindFilesTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
