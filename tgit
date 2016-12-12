@@ -776,6 +776,7 @@ def main():
     parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
     parser.add_argument( '--commits', metavar='FILENAME', type=str, default='tgit-commits.json', help = 'commits config file, default: %(default)s' )
     parser.add_argument( '--repository', metavar='FILENAME', type=str, default='tgit-repository.json', help = 'repository config file, default: %(default)s' )
+    parser.add_argument( '--cache', metavar='FILENAME', type=str, default='tgit-cache.json', help = 'cache for commit history, default: %(default)s' )
     parser.add_argument( '--no-diff', action='store_true', help = 'deactivate "automatically diff all files"' )
     args = parser.parse_args()
 
@@ -796,6 +797,7 @@ def main():
     filepath_commitsJson = os.path.join( configDir, args.commits )
     filepath_authorsJson = os.path.join( configDir, args.authors )
     filepath_repositoryJson = os.path.join( configDir, args.repository )
+    filepath_cacheJson = os.path.join( configDir, args.cache )
 
     if os.path.isfile( filepath_repositoryJson ):
         repository = json.load( open( filepath_repositoryJson, 'r' ) )
@@ -935,6 +937,13 @@ def main():
                 else:
                     (added, removed, file) = log.split( '\t', 2 )
                     commit.addNumstat( added, removed, file )
+
+    # load cache
+
+    if os.path.isfile( filepath_cacheJson ):
+        cache = json.load( open( filepath_cacheJson, 'r' ) )
+        for hash in cache['history']:
+            global_allCommitsHash[hash].hash_filename_history = cache['history'][hash]
 
     # building window...
 
@@ -1154,6 +1163,16 @@ def main():
             allTagsPerCommitHash[commit.commitHash] = commit.tags
     if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
         json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
+
+    # save cache
+
+    cache = collections.OrderedDict()
+    cache['history'] = collections.OrderedDict()
+    for commit in global_allCommits:
+        if commit.hash_filename_history:
+            cache['history'][commit.commitHash] = commit.hash_filename_history
+    if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
+        json.dump( cache, open( filepath_cacheJson, 'w' ), indent=2 )
 
 if __name__ == '__main__':
     main()

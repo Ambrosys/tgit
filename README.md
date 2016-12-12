@@ -24,6 +24,7 @@ git clone https://github.com/ralphbean/ansi2html.git
 ```
 usage: tgit [-h] [-b BRANCH] [-n] [--full-numstat] [-c DIR] [--tags FILENAME]
             [--authors FILENAME] [--commits FILENAME] [--repository FILENAME]
+            [--cache FILENAME] [--no-diff]
             [root] [paths [paths ...]]
 
 tgit is a simple git GUI for tagging commits.
@@ -45,6 +46,7 @@ optional arguments:
   --commits FILENAME    commits config file, default: tgit-commits.json
   --repository FILENAME
                         repository config file, default: tgit-repository.json
+  --cache FILENAME      cache for commit history, default: tgit-cache.json
   --no-diff             deactivate "automatically diff all files"
 ```
 
