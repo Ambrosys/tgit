@@ -594,6 +594,7 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
     ui_tagGridLayout = QtWidgets.QGridLayout()
     ui_tagGridLayout.setVerticalSpacing( 0 )
 
+    enabledCheckBoxes = []
     for row, group in enumerate( groupTags ):
         (enabled, tags) = groupTags[group]
         if not tags:
@@ -627,13 +628,27 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
             #       want to overwrite the last one. The effect is that each
             #       button toggles all check boxes in the tab instead only
             #       toggling the row.
-            ui_selectButton = QtWidgets.QPushButton( 'all' )
+            ui_selectButton = QtWidgets.QPushButton( '[x]' )
             ui_selectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, True, slot ) )
-            ui_unselectButton = QtWidgets.QPushButton( 'none' )
+            ui_unselectButton = QtWidgets.QPushButton( '[ ]' )
             ui_unselectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, False, slot ) )
             ui_tagLineLayout.addWidget( ui_selectButton )
             ui_tagLineLayout.addWidget( ui_unselectButton )
+            enabledCheckBoxes.extend( rowCheckBoxList )
 
+        ui_tagGridLayout.addLayout( ui_tagLineLayout, row, 1 )
+
+    if enabledCheckBoxes:
+        row = len( groupTags )
+        #ui_tagGridLayout.addWidget( QtWidgets.QLabel( '<strong>all:</strong>' ), row, 0 )
+        ui_selectButton = QtWidgets.QPushButton( 'all' )
+        ui_selectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, enabledCheckBoxes, True, slot ) )
+        ui_unselectButton = QtWidgets.QPushButton( 'none' )
+        ui_unselectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, enabledCheckBoxes, False, slot ) )
+        ui_tagLineLayout = QtWidgets.QHBoxLayout()
+        ui_tagLineLayout.addStretch()
+        ui_tagLineLayout.addWidget( ui_selectButton )
+        ui_tagLineLayout.addWidget( ui_unselectButton )
         ui_tagGridLayout.addLayout( ui_tagLineLayout, row, 1 )
 
     ui_tagGridWidget = QtWidgets.QWidget()
