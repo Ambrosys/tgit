@@ -136,11 +136,20 @@ class Commit:
         parents = map( lambda h: commitsHash[h], self.parents )
         return sorted( parents, key=lambda c: c.index, reverse=True )
 
-    def getOnelinerHtml( self, withLink ):
+    def getOneliner( self ):
+        return '%i: %s: %s' % (self.index, self.commitHash, self.getMessageOneliner())
+
+    def getShortOnelinerHtml( self, withLink ):
         if withLink:
-            return '<a href="%s">%i: <code>%s</code></a>: %s' % (self.commitHash, self.index, self.commitHash, self.getMessageOneliner())
+            return '<a href="%s">%i: <code>%s</code></a>' % (self.commitHash, self.index, self.commitHash)
         else:
-            return '%i: <code>%s</code>: %s' % (self.index, self.commitHash, self.getMessageOneliner() )
+            return '%i: <code>%s</code>' % (self.index, self.commitHash)
+
+    def getOnelinerHtml( self, withLink ):
+        return '%s: %s' % (self.getShortOnelinerHtml( withLink ), self.getMessageOneliner())
+
+    def getOnelinerWithDateHtml( self, withLink ):
+        return '%s: %s' % (self.getDateString(), self.getOnelinerHtml( withLink ))
 
     def getMessageOneliner( self ):
         return self.message.replace( '\n', ' ' )
@@ -374,8 +383,9 @@ def on_filesList_currentItemChanged( current, before ):
     """
     global_ui_followViewerScrollArea.setVisible( bool( current ) )
     if current:
-        hashes = global_selectedCommit.getHistory( current.text(filesListItemColumn_filename) )
-        htmls = ['<strong>history:</strong><br />']
+        filename = current.text(filesListItemColumn_filename)
+        hashes = global_selectedCommit.getHistory( filename )
+        htmls = ['<strong>history:</strong> (<a href="history:%s:%s">new window</a>)<br />' % (global_selectedCommit.commitHash, filename)]
         htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
         global_ui_followViewer.setText( ''.join( htmls ) )
 
@@ -392,8 +402,112 @@ def on_tagCheckBox_clicked():
     updateTagsOfTreeWidgetItem( global_selectedCommit )
     doFiltering()
 
+# if we do not hold the windows anywhere, they get garbage-collected before they could ever show up
+global_openWindows = set()
+class Window( QtWidgets.QWidget ):
+    def __init__( self ):
+        super().__init__()
+        global_openWindows.add( self )
+    def closeEvent( self, event ):
+        global_openWindows.remove( self )
+        event.accept()
+
+class MainWindow( QtWidgets.QMainWindow ):
+    def __init__( self, onClose ):
+        super().__init__()
+        self.onClose = onClose
+    def closeEvent( self, event ):
+        if self.onClose():
+            event.accept()
+        else:
+            event.ignore()
+
+@QtCore.pyqtSlot( str )
+def labelLinkActivated( label, link ):
+    if ':' in link:
+        (command, parameters) = link.split( ':', 1 )
+        if command == 'history':
+            (hash, filename) = parameters.split( ':', 1 )
+            commit = global_allCommitsHash[hash]
+
+            layout = QtWidgets.QVBoxLayout()
+            (container, newLabel) = createHistoryWidgets()
+
+            hashes = commit.getHistory( filename )
+            htmls = []
+            htmls.extend( ['<a href="forward-search:%s:%s">forward-search (slow)</a>' % (hash, filename)] )
+            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
+            htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
+            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
+            newLabel.setText( ''.join( htmls ) )
+
+            layout.addWidget( container )
+            window = Window()
+            window.setWindowTitle( commit.getOneliner() )
+            window.setLayout( layout )
+            #window.resize( 320, 240 )
+            window.show()
+        elif command == 'forward-search':
+            (hash, filename) = parameters.split( ':', 1 )
+            commit = global_allCommitsHash[hash]
+            commits = []
+            for c in reversed( global_allCommits ):
+                if c == commit:
+                    break
+                for f in c.getFilenames():
+                    if not passesPathFilter( f ):
+                        continue
+                    hashes = c.getHistory( f )
+                    foundCommit = False
+                    for commit.commitHash in hashes:
+                        commits.append( c )
+                        foundCommit = True
+                        break
+                    if foundCommit:
+                        break
+            htmls = []
+            htmls.extend( ['commits whose files in paths <strong>were changed</strong> by %s:<br />' % commit.getShortOnelinerHtml( True )] )
+            if commits:
+                def getLine( c ):
+                    if filename in c.getFilenames():
+                        return '%s' % c.getOnelinerWithDateHtml( True )
+                    else:
+                        return '<span style="color: #aaa;">%s</span>' % c.getOnelinerWithDateHtml( True )
+                htmls.extend( '<br />'.join( map( lambda c: getLine( c ), commits ) ) )
+            else:
+                htmls.extend( '(none)' )
+            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
+            htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
+            hashes = commit.getHistory( filename )
+            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
+            label.setText( ''.join( htmls ) )
+        else:
+            print( 'Error: handler for command "%s" not implemented' % command )
+    else:
+        on_commitLinkActivated( link )
+
 @QtCore.pyqtSlot( str )
 def on_commitLinkActivated( link ):
+    command_history = 'history:'
+    if link[:len(command_history)] == command_history:
+        (hash,filename) = link[len(command_history):].split( ':', 1 )
+        commit = global_allCommitsHash[hash]
+
+        layout = QtWidgets.QVBoxLayout()
+        (container, label) = createHistoryWidgets()
+
+        hashes = commit.getHistory( filename )
+        htmls = ['<strong>history:</strong> (<a href="forward-search:%s">forward-search</a>)<br />' % hash]
+        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
+        label.setText( ''.join( htmls ) )
+
+        layout.addWidget( container )
+        window = Window()
+        window.setLayout( layout )
+        #window.resize( 320, 240 )
+        window.show()
+        return
+
     for item in global_ui_commitList.selectedItems():
         item.setSelected( False )
     item = global_ui_commitListItemHash[link]
@@ -504,6 +618,7 @@ def doFiltering():
                     for hash in hashes:
                         if set( global_allCommitsHash[hash].tags ) & activeFindFilesFilter:
                             foundCommitHashes.add( c.commitHash )
+                            break
 
     for i in range( 0, global_ui_commitList.topLevelItemCount() ):
         item = global_ui_commitList.topLevelItem( i )
@@ -738,6 +853,25 @@ def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped 
     ui_filterTabWidget.addTab( ui_filterAuthorScrollArea, 'authors' )
 
     return ui_filterTabWidget
+
+def createHistoryWidgets():
+    """
+    :return: (container, label)
+    :rtype: (QtWidgets.QScrollArea, QtWidgets.QLabel)
+    """
+    label = QtWidgets.QLabel()
+    label.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    label.linkActivated.connect( lambda link: labelLinkActivated( label, link ) )
+    layout = QtWidgets.QVBoxLayout()
+    layout.addWidget( label )
+    layout.addStretch()
+    widget = QtWidgets.QWidget()
+    widget.setLayout( layout )
+    container = QtWidgets.QScrollArea()
+    #container.setFrameShape( QtWidgets.QFrame.NoFrame )
+    container.setWidgetResizable( True )
+    container.setWidget( widget )
+    return container, label
 
 def main():
 
@@ -979,18 +1113,7 @@ def main():
     global_ui_diffViewer.setReadOnly( True )
     global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
-    global_ui_followViewer = QtWidgets.QLabel()
-    global_ui_followViewer.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    global_ui_followViewer.linkActivated.connect( on_commitLinkActivated )
-    ui_followViewerLayout = QtWidgets.QVBoxLayout()
-    ui_followViewerLayout.addWidget( global_ui_followViewer )
-    ui_followViewerLayout.addStretch()
-    ui_followViewerWidget = QtWidgets.QWidget()
-    ui_followViewerWidget.setLayout( ui_followViewerLayout )
-    global_ui_followViewerScrollArea = QtWidgets.QScrollArea()
-    #global_ui_followViewerScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-    global_ui_followViewerScrollArea.setWidgetResizable( True )
-    global_ui_followViewerScrollArea.setWidget( ui_followViewerWidget )
+    (global_ui_followViewerScrollArea, global_ui_followViewer) = createHistoryWidgets()
     global_ui_followViewerScrollArea.setHidden( True )
 
     ui_fileViewers = QtWidgets.QSplitter()
@@ -1137,7 +1260,10 @@ def main():
     ui_centralSplitter.addWidget( ui_commitEditorWidget )
     ui_centralSplitter.setSizes( [1000, 1000] )
 
-    ui_window = QtWidgets.QMainWindow()
+    def mainWindow_onClose():
+        global_openWindows.clear()
+        return True
+    ui_window = MainWindow( mainWindow_onClose )
     ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repositoryDir ), branch) )
     ui_window.setWindowState( QtCore.Qt.WindowMaximized )
     ui_window.setCentralWidget( ui_centralSplitter )
