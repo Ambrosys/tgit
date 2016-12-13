@@ -590,8 +590,9 @@ def doFiltering():
         if filterCheckBox.isChecked():
             searchFilter.add( filterCheckBox.text() )
 
+    filterInputText = global_ui_searchFilterLineEdit.text()
     try:
-        filterRegex = re.compile( global_ui_searchFilterLineEdit.text(), re.IGNORECASE )
+        filterRegex = re.compile( filterInputText, re.IGNORECASE )
     except re.error:
         filterRegex = re.compile( r'.*' )
 
@@ -678,6 +679,12 @@ def doFiltering():
                         if global_ui_searchFilterLineEdit.text():
                             found = False
                             if not found:
+                                if 'commit' in searchFilter and commit.commitHash[:len(filterInputText)] == filterInputText:
+                                    found = True
+                            if not found:
+                                if 'message' in searchFilter and filterRegex.search( commit.message ):
+                                    found = True
+                            if not found:
                                 if 'files in paths' in searchFilter or 'files not in paths' in searchFilter:
                                     for filename in commit.getFilenames():
                                         if filterRegex.search( filename ):
@@ -687,9 +694,6 @@ def doFiltering():
                                             elif not passesPathFilter( filename ) and 'files not in paths' in searchFilter:
                                                 found = True
                                                 break
-                            if not found:
-                                if 'message' in searchFilter and filterRegex.search( commit.message ):
-                                    found = True
                             if not found:
                                 shouldBeVisible = False
 
@@ -1170,7 +1174,7 @@ def main():
     ui_filterSearchAreaLayout = QtWidgets.QHBoxLayout()
     ui_filterSearchAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterSearchAreaLayout.addWidget( global_ui_searchFilterLineEdit )
-    for searchLocation in ['message', 'files in paths', 'files not in paths']:
+    for searchLocation in ['commit', 'message', 'files in paths', 'files not in paths']:
         filterCheckBox = QtWidgets.QCheckBox( searchLocation )
         global_ui_searchFilterCheckBoxes.append( filterCheckBox )
         filterCheckBox.setChecked( True )
@@ -1191,6 +1195,8 @@ def main():
         global_ui_filterAreaCheckBox.toggled.connect( ui_filterIncludeSpecialCheckBox.setEnabled )
     global_ui_filterAreaCheckBox.toggled.connect( ui_filterTabWidget.setEnabled )
     global_ui_filterAreaCheckBox.toggled.connect( global_ui_searchFilterLineEdit.setEnabled )
+    for ui_searchFilterCheckBox in global_ui_searchFilterCheckBoxes:
+        global_ui_filterAreaCheckBox.toggled.connect( ui_searchFilterCheckBox.setEnabled )
     global_ui_filterAreaCheckBox.clicked.connect( doFiltering )
 
     groupTags = collections.OrderedDict()
