@@ -148,11 +148,19 @@ class Commit:
     def getOnelinerHtml( self, withLink ):
         return '%s: %s' % (self.getShortOnelinerHtml( withLink ), self.getMessageOneliner())
 
+    def getMultilinerHtml( self ):
+        (m1, m2) = self.message.split( '\n', 1 )
+        m1 = m1.strip().replace( '\n', '<br />' )
+        m2 = m2.strip().replace( '\n', '<br />' )
+        if m2:
+            m2 = '<br />%s' % m2
+        return '%i: <strong><code>%s</code>: </strong><span style="color:#e66c1e;"><strong>%s</strong>%s</span>' % (self.index, self.commitHash, m1, m2)
+
     def getOnelinerWithDateHtml( self, withLink ):
         return '%s: %s' % (self.getDateString(), self.getOnelinerHtml( withLink ))
 
     def getMessageOneliner( self ):
-        return self.message.replace( '\n', ' ' )
+        return self.message.strip().replace( '\n', ' ' )
 
     def getTagsOneliner( self ):
         tags = []
@@ -256,7 +264,7 @@ def on_commitList_currentItemChanged( current, before ):
         for tagCheckBox in global_ui_tagCheckBoxes:
             tagCheckBox.setChecked( tagCheckBox.text() in global_selectedCommit.tags )
 
-        global_ui_commitInfo1.setText( global_selectedCommit.getOnelinerHtml( False ) )
+        global_ui_commitInfo1.setText( global_selectedCommit.getMultilinerHtml() )
 
         children = map( lambda c: '<strong>child:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
         parents = map( lambda c: '<strong>parent:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getParents( global_allCommitsHash ) )
@@ -1206,9 +1214,6 @@ def main():
 
     global_ui_commitInfo1 = QtWidgets.QLabel()
     global_ui_commitInfo1.setText( 'commit' )
-    font = global_ui_commitInfo1.font()
-    font.setBold( True )
-    global_ui_commitInfo1.setFont( font )
     global_ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
     global_ui_commitInfo1.setWordWrap( True )
     global_ui_commitInfo1.linkActivated.connect( on_commitLinkActivated )
