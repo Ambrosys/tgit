@@ -727,7 +727,7 @@ def doFiltering():
 
     slot_updateCommitListInfo()
 
-def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
+def createTagCheckBoxes( groupTags, checkBoxList, checked, slot, allowButtons=True ):
     ui_tagGridLayout = QtWidgets.QGridLayout()
     ui_tagGridLayout.setVerticalSpacing( 0 )
 
@@ -756,7 +756,7 @@ def createTagCheckBoxes( groupTags, checkBoxList, checked, slot ):
 
         ui_tagLineLayout.addStretch()
 
-        if enabled:
+        if enabled and allowButtons:
             # note: If we use lambda below instead of functools.partial,
             #       rowCheckBoxList in the slot refers to the last
             #       rowCheckBoxList defined in this loop. This may be a python
@@ -1228,7 +1228,7 @@ def main():
         groupTags['undefined'] = (False, undefinedTags)
 
     if groupTags:
-        ui_tagWidget = createTagCheckBoxes( groupTags, global_ui_tagCheckBoxes, False, on_tagCheckBox_clicked )
+        ui_tagWidget = createTagCheckBoxes( groupTags, global_ui_tagCheckBoxes, False, on_tagCheckBox_clicked, allowButtons=False )
 
         ui_tagScrollArea = QtWidgets.QScrollArea()
         ui_tagScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
