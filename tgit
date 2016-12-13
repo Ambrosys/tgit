@@ -41,6 +41,7 @@ global_ui_filesList = None
 global_ui_commitInfo1 = None
 global_ui_commitInfo2 = None
 global_ui_filterAreaCheckBox = None
+global_ui_filterAreaOnlySearchCheckBox = None
 global_ui_filterIncludeSpecialCheckBoxes = []
 global_ui_filterIncludeCheckBoxes1 = []
 global_ui_filterIncludeCheckBoxes2 = []
@@ -543,6 +544,29 @@ def slot_updateCommitListInfo():
         len( global_ui_commitList.selectedItems() )
         ))
 
+def checkSearchTextFilter( commit, searchFilter, filterText, filterRegex ):
+    if global_ui_searchFilterLineEdit.text():
+        found = False
+        if not found:
+            if 'commit' in searchFilter and commit.commitHash[:len(filterText)] == filterText:
+                found = True
+        if not found:
+            if 'message' in searchFilter and filterRegex.search( commit.message ):
+                found = True
+        if not found:
+            if 'files in paths' in searchFilter or 'files not in paths' in searchFilter:
+                for filename in commit.getFilenames():
+                    if filterRegex.search( filename ):
+                        if passesPathFilter( filename ) and 'files in paths' in searchFilter:
+                            found = True
+                            break
+                        elif not passesPathFilter( filename ) and 'files not in paths' in searchFilter:
+                            found = True
+                            break
+        return found
+    else:
+        return True
+
 @QtCore.pyqtSlot()
 def doFiltering():
     activeIncludeSpecialFilter = set()
@@ -634,7 +658,7 @@ def doFiltering():
         commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
         shouldBeVisible = True
 
-        if global_ui_filterAreaCheckBox.isChecked():
+        if global_ui_filterAreaCheckBox.isChecked() and not global_ui_filterAreaOnlySearchCheckBox.isChecked():
             if shouldBeVisible:
                 if not commit.author in activeAuthorFilter:
                     shouldBeVisible = False
@@ -676,26 +700,8 @@ def doFiltering():
                                 shouldBeVisible = False
 
                     if shouldBeVisible:
-                        if global_ui_searchFilterLineEdit.text():
-                            found = False
-                            if not found:
-                                if 'commit' in searchFilter and commit.commitHash[:len(filterInputText)] == filterInputText:
-                                    found = True
-                            if not found:
-                                if 'message' in searchFilter and filterRegex.search( commit.message ):
-                                    found = True
-                            if not found:
-                                if 'files in paths' in searchFilter or 'files not in paths' in searchFilter:
-                                    for filename in commit.getFilenames():
-                                        if filterRegex.search( filename ):
-                                            if passesPathFilter( filename ) and 'files in paths' in searchFilter:
-                                                found = True
-                                                break
-                                            elif not passesPathFilter( filename ) and 'files not in paths' in searchFilter:
-                                                found = True
-                                                break
-                            if not found:
-                                shouldBeVisible = False
+                        if not checkSearchTextFilter( commit, searchFilter, filterInputText, filterRegex ):
+                            shouldBeVisible = False
 
             if not shouldBeVisible:
                 if commit.commitHash in foundCommitHashes:
@@ -709,6 +715,10 @@ def doFiltering():
                             foundATag = True
                     if foundATag:
                         shouldBeVisible = True
+        elif global_ui_filterAreaOnlySearchCheckBox.isChecked():
+            if shouldBeVisible:
+                if not checkSearchTextFilter( commit, searchFilter, filterInputText, filterRegex ):
+                    shouldBeVisible = False
 
         item.setHidden( not shouldBeVisible )
 
@@ -902,6 +912,7 @@ def main():
     global global_ui_commitInfo1
     global global_ui_commitInfo2
     global global_ui_filterAreaCheckBox
+    global global_ui_filterAreaOnlySearchCheckBox
     global global_ui_searchFilterLineEdit
     global global_ui_tagCheckBoxes
     global global_ui_commitListItemHash
@@ -1146,6 +1157,7 @@ def main():
 
     global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'enable filter' )
     global_ui_filterAreaCheckBox.setChecked( True )
+    global_ui_filterAreaOnlySearchCheckBox = QtWidgets.QCheckBox( 'only search' )
     # signals are assigned later
 
     ui_vline = QtWidgets.QFrame()
@@ -1155,6 +1167,7 @@ def main():
     ui_filterIncludeSpecialAreaLineLayout = QtWidgets.QHBoxLayout()
     ui_filterIncludeSpecialAreaLineLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaCheckBox )
+    ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaOnlySearchCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( ui_vline )
     for tag in ['consider all paths']:
         filterCheckBox = QtWidgets.QCheckBox( tag )
@@ -1168,6 +1181,7 @@ def main():
     ui_filterTabWidget = createFilterTabWidget( global_allTagsGrouped, undefinedTags, allAuthorsGrouped )
 
     global_ui_searchFilterLineEdit = QtWidgets.QLineEdit()
+    global_ui_searchFilterLineEdit.setClearButtonEnabled( True )
     #global_ui_searchFilterLineEdit.editingFinished.connect( doFiltering )
     global_ui_searchFilterLineEdit.textEdited.connect( doFiltering )
 
@@ -1191,13 +1205,21 @@ def main():
     ui_filterAreaWidget = QtWidgets.QWidget()
     ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
 
-    for ui_filterIncludeSpecialCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
-        global_ui_filterAreaCheckBox.toggled.connect( ui_filterIncludeSpecialCheckBox.setEnabled )
-    global_ui_filterAreaCheckBox.toggled.connect( ui_filterTabWidget.setEnabled )
-    global_ui_filterAreaCheckBox.toggled.connect( global_ui_searchFilterLineEdit.setEnabled )
-    for ui_searchFilterCheckBox in global_ui_searchFilterCheckBoxes:
-        global_ui_filterAreaCheckBox.toggled.connect( ui_searchFilterCheckBox.setEnabled )
+    def filterCheckBoxesToggled():
+        filterEnabled = global_ui_filterAreaCheckBox.isChecked()
+        onlySearch = global_ui_filterAreaOnlySearchCheckBox.isChecked()
+        global_ui_filterAreaOnlySearchCheckBox.setEnabled( filterEnabled )
+        for ui_filterIncludeSpecialCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
+            ui_filterIncludeSpecialCheckBox.setEnabled( filterEnabled and not onlySearch )
+        ui_filterTabWidget.setVisible( filterEnabled and not onlySearch )
+        global_ui_searchFilterLineEdit.setEnabled( filterEnabled )
+        for ui_searchFilterCheckBox in global_ui_searchFilterCheckBoxes:
+            ui_searchFilterCheckBox.setEnabled( filterEnabled )
+
+    global_ui_filterAreaCheckBox.toggled.connect( filterCheckBoxesToggled )
+    global_ui_filterAreaOnlySearchCheckBox.toggled.connect( filterCheckBoxesToggled )
     global_ui_filterAreaCheckBox.clicked.connect( doFiltering )
+    global_ui_filterAreaOnlySearchCheckBox.clicked.connect( doFiltering )
 
     groupTags = collections.OrderedDict()
     for group in global_allTagsGrouped:
