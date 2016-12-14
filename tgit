@@ -163,13 +163,16 @@ class Commit:
     def getMessageOneliner( self ):
         return self.message.strip().replace( '\n', ' ' )
 
-    def getTagsOneliner( self ):
+    def getTagsSorted( self ):
         tags = []
         for tag in global_allTags:
             if tag in self.tags:
                 tags.append( tag )
         tags.extend( sorted( list( set( self.tags ) - set( global_allTags ) ) ) )
-        return ', '.join( tags )
+        return tags
+
+    def getTagsOneliner( self ):
+        return ', '.join( self.getTagsSorted() )
 
     def getDateString( self ):
         return self.date.strftime( '%Y-%m-%d %H:%M:%S' )
@@ -346,6 +349,28 @@ class TagMenuSlot( QtWidgets.QWidget ):
         on_commitList_currentItemChanged( global_ui_commitList.currentItem(), None )
         doFiltering()
 
+@QtCore.pyqtSlot()
+def on_action_copyHashes():
+    lines = []
+    for item in global_ui_commitList.selectedItems():
+        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
+        lines.append( commit.commitHash )
+    clipboard = QtWidgets.QApplication.clipboard()
+    clipboard.setText( '\n'.join( lines ) )
+
+@QtCore.pyqtSlot()
+def on_action_copyHashesWithTagsAndMessage():
+    lines = []
+    for item in global_ui_commitList.selectedItems():
+        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
+        line = []
+        line.append( commit.commitHash )
+        line.extend( map( lambda t: '[%s]' % t, commit.getTagsSorted() ) )
+        line.append( commit.getMessageOneliner() )
+        lines.append( ' '.join( line ) )
+    clipboard = QtWidgets.QApplication.clipboard()
+    clipboard.setText( '\n'.join( lines ) )
+
 def showContextMenu( item, globalPos ):
     """
     :type item: QtWidgets.QTreeWidgetItem
@@ -361,6 +386,8 @@ def showContextMenu( item, globalPos ):
         for tag in global_allTagsGrouped[group]:
             addSubMenu.addAction( tag, receiver.slot_addTag )
             removeSubMenu.addAction( tag, receiver.slot_removeTag )
+    menu.addAction( 'copy hashes', on_action_copyHashes )
+    menu.addAction( 'copy hashes, tags, message', on_action_copyHashesWithTagsAndMessage )
 
     menu.exec( globalPos )
 
