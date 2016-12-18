@@ -1,452 +1,33 @@
 #!/usr/bin/env python3
 
-import site
-import os
-site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
+import Globals
+import Utils
+import Filter
+import CommitList
+import FileList
+import CreateUi
+import GeneralUi
+import Commit
 
 from PyQt5 import QtWidgets, QtGui, QtCore
-import subprocess
-import ansi2html
-import threading
-import tempfile
 import json
 import collections
-import datetime
 import re
 import argparse
-import functools
-import copy
-
-repositoryDir = None
-branch = None
-
-includeDirectories = []
-includeFiles = []
-excludePatterns = [] # note: not used for git commands
-
-commitListItemColumn_index = 0
-commitListItemColumn_commit = 1
-commitListItemColumn_lines = 2
-commitListItemColumn_tags = 3
-commitListItemColumn_author = 5
-filesListItemColumn_lines = 0
-filesListItemColumn_filename = 1
-
-global_ui_commitList = None
-global_ui_commitListInfo = None
-global_ui_diffViewer = None
-global_ui_followViewer = None
-global_ui_followViewerScrollArea = None
-global_ui_filesList = None
-global_ui_commitInfo1 = None
-global_ui_commitInfo2 = None
-global_ui_filterAreaCheckBox = None
-global_ui_filterAreaOnlySearchCheckBox = None
-global_ui_filterIncludeSpecialCheckBoxes = []
-global_ui_filterIncludeCheckBoxes1 = []
-global_ui_filterIncludeCheckBoxes2 = []
-global_ui_filterObligatoryCheckBoxes = []
-global_ui_filterExcludeCheckBoxes = []
-global_ui_filterFindFilesCheckBoxes = []
-global_ui_filterFindFilesIncludeCheckBoxes = []
-global_ui_filterFindFilesForwardCheckBox = None
-global_ui_filterAuthorCheckBoxes = []
-global_ui_searchFilterLineEdit = None
-global_ui_searchFilterCheckBoxes = []
-global_ui_tagCheckBoxes = []
-global_ui_commitListItemHash = {}
-global_ui_diffViewerCheckBox = None
-global_selectedCommit = None
-global_allCommits = []
-global_allCommitsHash = {}
-global_allTags = []
-global_allTagsGrouped = {}
-global_previousBackgroundList = []
-
-class CommitFile:
-    def __init__( self, name ):
-        self.name = name
-        self.status = '?'
-        self.added = 0
-        self.removed = 0
-
-    def setStatus( self, status ):
-        self.status = status
-
-    def addNumstat( self, added, removed ):
-        if added == '-' and removed == '-': # numstat calculation failed, may happen...
-            return
-        try:
-            self.added += int( added )
-            self.removed += int( removed )
-        except ValueError:
-            print( 'Warning: numstat for %s is "%s %s"' % (self.name, added, removed) )
-
-class Commit:
-    def __init__( self, index, commitHash, parents, author, email, date, message ):
-        self.index = index
-        self.commitHash = commitHash
-        self.parents = parents
-        self.author = author
-        self.originalAuthor = author
-        self.email = email
-        # git date example: 2010-06-17T13:08:54+00:00
-        self.date = datetime.datetime.strptime( date[:22] + date[-2:], '%Y-%m-%dT%H:%M:%S%z' )
-        self.message = message
-        self.files = []
-        self.filesHash = {}
-        self.added = 0
-        self.removed = 0
-        self.tags = []
-        self.hash_filename_history = {}
-
-    def _ensureFile( self, filename ):
-        if filename in self.filesHash:
-            return self.filesHash[filename]
-        else:
-            file = CommitFile( filename )
-            self.files.append( file )
-            self.filesHash[filename] = file
-            return file
-
-    def _recalculateOverallNumstat( self ):
-        self.added = 0
-        self.removed = 0
-        for file in self.files:
-            self.added += file.added
-            self.removed += file.removed
-
-    def setStatus( self, status, filename ):
-        self._ensureFile( filename ).setStatus( status )
-
-    def addNumstat( self, added, removed, filename ):
-        self._ensureFile( filename ).addNumstat( added, removed )
-        self._recalculateOverallNumstat()
-
-    def getFilenames( self ):
-        return map( lambda file: file.name, self.files )
-
-    def getChildren( self ):
-        children = []
-        for c in global_allCommits:
-            if self.commitHash in c.parents:
-                children.append( c )
-        return sorted( children, key=lambda c: c.index, reverse=True )
-
-    def getParents( self, commitsHash ):
-        parents = map( lambda h: commitsHash[h], self.parents )
-        return sorted( parents, key=lambda c: c.index, reverse=True )
-
-    def getOneliner( self ):
-        return '%i: %s: %s' % (self.index, self.commitHash, self.getMessageOneliner())
-
-    def getShortOnelinerHtml( self, withLink ):
-        if withLink:
-            return '<a href="%s">%i: <code>%s</code></a>' % (self.commitHash, self.index, self.commitHash)
-        else:
-            return '%i: <code>%s</code>' % (self.index, self.commitHash)
-
-    def getOnelinerHtml( self, withLink ):
-        return '%s: %s' % (self.getShortOnelinerHtml( withLink ), self.getMessageOneliner())
-
-    def getMultilinerHtml( self ):
-        (m1, m2) = self.message.split( '\n', 1 )
-        m1 = m1.strip().replace( '\n', '<br />' )
-        m2 = m2.strip().replace( '\n', '<br />' )
-        if m2:
-            m2 = '<br />%s' % m2
-        return '%i: <strong><code>%s</code>: </strong><span style="color:#e66c1e;"><strong>%s</strong>%s</span>' % (self.index, self.commitHash, m1, m2)
-
-    def getOnelinerWithDateHtml( self, withLink ):
-        return '%s: %s' % (self.getDateString(), self.getOnelinerHtml( withLink ))
-
-    def getMessageOneliner( self ):
-        return self.message.strip().replace( '\n', ' ' )
-
-    def getTagsSorted( self ):
-        tags = []
-        for tag in global_allTags:
-            if tag in self.tags:
-                tags.append( tag )
-        tags.extend( sorted( list( set( self.tags ) - set( global_allTags ) ) ) )
-        return tags
-
-    def getTagsOneliner( self ):
-        return ', '.join( self.getTagsSorted() )
-
-    def getDateString( self ):
-        return self.date.strftime( '%Y-%m-%d %H:%M:%S' )
-
-    def getHistory( self, filename ):
-        if not filename in self.hash_filename_history:
-            history = call( ['git', 'log', '--format=%h', '--follow', self.commitHash, '--', filename], cwd=repositoryDir )
-            self.hash_filename_history[filename] = history[1:] # dismiss self
-        return self.hash_filename_history[filename]
-
-def diff_nonblocking( commit, file ):
-    file1content = call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=repositoryDir )
-    file2content = call( ['git', 'show', '%s:%s' % (commit.commitHash, file)], cwd=repositoryDir )
-    file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_OLD_%s' % os.path.basename(file) )
-    file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_NEW_%s' % os.path.basename(file) )
-    file1.write( '\n'.join( file1content ) )
-    file2.write( '\n'.join( file2content ) )
-    file1.flush()
-    file2.flush()
-    call( ['meld', file1.name, file2.name], cwd=repositoryDir )
-
-def call( cmd, cwd=None, input=None ):
-    if isinstance( input, str ):
-        input = input.encode('utf-8')
-    process = subprocess.Popen( cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE if input else None, cwd=cwd )
-    stdoutput, stderroutput = process.communicate( input )
-    try:
-        return stdoutput.decode('utf-8').splitlines()
-    except UnicodeDecodeError:
-        return str( stdoutput ).split( '\\n' )
-
-def call_nullSeperated( cmd, cwd=None, input=None ):
-    if isinstance( input, str ):
-        input = input.encode('utf-8')
-    process = subprocess.Popen( cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE if input else None, cwd=cwd )
-    stdoutput, stderroutput = process.communicate( input )
-    outputList = stdoutput.split( b'\x00' )
-    try:
-        outputStrings = map( lambda s: s.decode('utf-8'), outputList )
-    except UnicodeDecodeError:
-        outputStrings = map( lambda s: str( s ), outputList )
-    return outputStrings
-
-def passesPathFilter( filename ):
-    if not includeDirectories and not includeFiles:
-        found = True
-    else:
-        found = False
-    if not found:
-        for include in includeDirectories:
-            if filename[:len(include)+1] == '%s/' % include:
-                found = True
-                break
-    if not found:
-        for include in includeFiles:
-            if filename == include:
-                found = True
-                break
-    if found:
-        for exclude in excludePatterns:
-            if exclude.match( filename ):
-                found = False
-                break
-    return found
-
-def somePassesPathFilter( filenames, default ):
-    passed = default
-    for filename in filenames:
-        if passesPathFilter( filename ):
-            passed = True
-            break
-        else:
-            passed = False
-    return passed
-
-@QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )
-def on_commitList_currentItemChanged( current, before ):
-    """
-    :type current: QtWidgets.QTreeWidgetItem
-    :type before: QtWidgets.QTreeWidgetItem
-    """
-    global global_selectedCommit
-    global global_previousBackgroundList
-    
-    # restore backgrounds
-    for (item, brush) in global_previousBackgroundList:
-        for col in range( 0, item.columnCount() ):
-            item.setBackground( col, brush )
-            
-    if current:
-        global_selectedCommit = global_allCommitsHash[current.text( commitListItemColumn_commit )]
-
-        for tagCheckBox in global_ui_tagCheckBoxes:
-            tagCheckBox.setChecked( tagCheckBox.text() in global_selectedCommit.tags )
-
-        global_ui_commitInfo1.setText( global_selectedCommit.getMultilinerHtml() )
-
-        children = map( lambda c: '<strong>child:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getChildren() )
-        parents = map( lambda c: '<strong>parent:</strong> %s<br />' % c.getOnelinerHtml( True ), global_selectedCommit.getParents( global_allCommitsHash ) )
-        childrenParents = '%s%s' % (''.join(children), ''.join(parents))
-        if childrenParents[-6:] == '<br />':
-            childrenParents = childrenParents[:-6]
-        author = '<strong>author:</strong> %s (%s), <strong>email:</strong> %s' % (global_selectedCommit.author, global_selectedCommit.originalAuthor, global_selectedCommit.email)
-        global_ui_commitInfo2.setText( '%s<br />%s' % (author, childrenParents) )
-
-        global_ui_filesList.clear()
-        for file in global_selectedCommit.files:
-            (status, name) = (file.status, file.name)
-            readableLines = str( file.added + file.removed )
-            item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
-            if passesPathFilter( name ):
-                item.setForeground( filesListItemColumn_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
-            else:
-                item.setForeground( filesListItemColumn_lines, QtGui.QBrush( QtCore.Qt.lightGray ) )
-                item.setForeground( filesListItemColumn_filename, {'M':QtGui.QBrush( QtCore.Qt.lightGray ), 'A': QtGui.QBrush( QtGui.QColor(164,192,164) ), 'D': QtGui.QBrush( QtGui.QColor(255,192,192) )}[status] )
-            global_ui_filesList.addTopLevelItem( item )
-
-        # set parents/children background
-        family = []
-        family.extend( global_selectedCommit.getParents( global_allCommitsHash ) )
-        family.extend( global_selectedCommit.getChildren() )
-        for c in family:
-            item = global_ui_commitListItemHash[c.commitHash]
-            global_previousBackgroundList.append( (item, item.background(0)) )
-            for col in range( 0, item.columnCount() ):
-                item.setBackground( col, QtGui.QBrush( QtGui.QColor( 230, 108, 30, 32 ) ) )
-
-        if global_ui_diffViewerCheckBox.isChecked():
-            cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
-            if includeDirectories or includeFiles:
-                cmd.extend( includeDirectories )
-                cmd.extend( includeFiles )
-            else:
-                cmd.append( '.' )
-            diff = call( cmd, cwd=repositoryDir )
-            conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
-            ansi = '\n'.join( diff )
-            html = conv.convert( ansi )
-            #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-            global_ui_diffViewer.setHtml( html )
-        else:
-            global_ui_diffViewer.setHtml( '<html><body style="background: black;"></body></html>' )
-
-@QtCore.pyqtSlot( QtCore.QPoint )
-def on_commitList_customContextMenuRequested( pos ):
-    item = global_ui_commitList.itemAt( pos )
-    if item:
-        showContextMenu( item, global_ui_commitList.viewport().mapToGlobal( pos ) )
-
-def updateTagsOfTreeWidgetItem( commit ):
-    global_ui_commitListItemHash[commit.commitHash].setText( commitListItemColumn_tags, commit.getTagsOneliner() )
-
-class TagMenuSlot( QtWidgets.QWidget ):
-
-    @QtCore.pyqtSlot()
-    def slot_addTag( self ):
-        tag = self.sender().text()
-        for item in global_ui_commitList.selectedItems():
-            commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
-            if not tag in commit.tags:
-                commit.tags.append( tag )
-                updateTagsOfTreeWidgetItem( commit )
-        on_commitList_currentItemChanged( global_ui_commitList.currentItem(), None )
-        doFiltering()
-
-    @QtCore.pyqtSlot()
-    def slot_removeTag( self ):
-        tag = self.sender().text()
-        for item in global_ui_commitList.selectedItems():
-            commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
-            if tag in commit.tags:
-                commit.tags.remove( tag )
-                updateTagsOfTreeWidgetItem( commit )
-        on_commitList_currentItemChanged( global_ui_commitList.currentItem(), None )
-        doFiltering()
-
-@QtCore.pyqtSlot()
-def on_action_copyHashes():
-    lines = []
-    for item in global_ui_commitList.selectedItems():
-        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
-        lines.append( commit.commitHash )
-    clipboard = QtWidgets.QApplication.clipboard()
-    clipboard.setText( '\n'.join( lines ) )
-
-@QtCore.pyqtSlot()
-def on_action_copyHashesWithTagsAndMessage():
-    lines = []
-    for item in global_ui_commitList.selectedItems():
-        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
-        line = []
-        line.append( commit.commitHash )
-        line.extend( map( lambda t: '[%s]' % t, commit.getTagsSorted() ) )
-        line.append( commit.getMessageOneliner() )
-        lines.append( ' '.join( line ) )
-    clipboard = QtWidgets.QApplication.clipboard()
-    clipboard.setText( '\n'.join( lines ) )
-
-def showContextMenu( item, globalPos ):
-    """
-    :type item: QtWidgets.QTreeWidgetItem
-    :type globalPos: QtCore.QPoint
-    """
-    receiver = TagMenuSlot()
-    menu = QtWidgets.QMenu( receiver )
-    addMenu = menu.addMenu( 'add' )
-    removeMenu = menu.addMenu( 'remove' )
-    for group in global_allTagsGrouped:
-        addSubMenu = addMenu.addMenu( group )
-        removeSubMenu = removeMenu.addMenu( group )
-        for tag in global_allTagsGrouped[group]:
-            addSubMenu.addAction( tag, receiver.slot_addTag )
-            removeSubMenu.addAction( tag, receiver.slot_removeTag )
-    menu.addAction( 'copy hashes', on_action_copyHashes )
-    menu.addAction( 'copy hashes, tags, message', on_action_copyHashesWithTagsAndMessage )
-
-    menu.exec( globalPos )
-
-@QtCore.pyqtSlot()
-def on_diffFiles_itemSelectionChanged():
-    items = global_ui_filesList.selectedItems()
-    if items:
-        files = map( lambda item: item.text( filesListItemColumn_filename ), items )
-        cmd = ['git', 'show', '--format=', global_selectedCommit.commitHash, '--color-words', '--']
-        cmd.extend( files )
-        diff = call( cmd, cwd=repositoryDir )
-        conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
-        ansi = '\n'.join( diff )
-        html = conv.convert( ansi )
-        #html = '\n'.join( call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-        global_ui_diffViewer.setHtml( html )
-
-@QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
-def on_filesList_itemActivated( item ):
-    file = item.text( filesListItemColumn_filename )
-    thread = threading.Thread( target=diff_nonblocking, args=(global_selectedCommit, file) )
-    thread.start()
-
-@QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )
-def on_filesList_currentItemChanged( current, before ):
-    """
-    :type current: QtWidgets.QTreeWidgetItem
-    :type before: QtWidgets.QTreeWidgetItem
-    """
-    global_ui_followViewerScrollArea.setVisible( bool( current ) )
-    if current:
-        filename = current.text(filesListItemColumn_filename)
-        hashes = global_selectedCommit.getHistory( filename )
-        htmls = ['<strong>history:</strong> (<a href="history:%s:%s">new window</a>)<br />' % (global_selectedCommit.commitHash, filename)]
-        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
-        global_ui_followViewer.setText( ''.join( htmls ) )
+import os
 
 @QtCore.pyqtSlot()
 def on_tagCheckBox_clicked():
-    if global_selectedCommit is None:
+    if Globals.selectedCommit is None:
         return
     tags = []
-    for tagCheckBox in global_ui_tagCheckBoxes:
+    for tagCheckBox in Globals.ui_tagCheckBoxes:
         if tagCheckBox.isChecked():
             tags.append( tagCheckBox.text() )
-    global_selectedCommit.tags = tags
+    Globals.selectedCommit.tags = tags
 
-    updateTagsOfTreeWidgetItem( global_selectedCommit )
-    doFiltering()
-
-# if we do not hold the windows anywhere, they get garbage-collected before they could ever show up
-global_openWindows = set()
-class Window( QtWidgets.QWidget ):
-    def __init__( self ):
-        super().__init__()
-        global_openWindows.add( self )
-    def closeEvent( self, event ):
-        global_openWindows.remove( self )
-        event.accept()
+    CommitList.updateTagsOfTreeWidgetItem( Globals.selectedCommit )
+    Filter.doFiltering()
 
 class MainWindow( QtWidgets.QMainWindow ):
     def __init__( self, onClose ):
@@ -458,497 +39,7 @@ class MainWindow( QtWidgets.QMainWindow ):
         else:
             event.ignore()
 
-@QtCore.pyqtSlot( str )
-def labelLinkActivated( label, link ):
-    if ':' in link:
-        (command, parameters) = link.split( ':', 1 )
-        if command == 'history':
-            (hash, filename) = parameters.split( ':', 1 )
-            commit = global_allCommitsHash[hash]
-
-            layout = QtWidgets.QVBoxLayout()
-            (container, newLabel) = createHistoryWidgets()
-
-            hashes = commit.getHistory( filename )
-            htmls = []
-            htmls.extend( ['<a href="forward-search:%s:%s">forward-search (slow)</a>' % (hash, filename)] )
-            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
-            htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
-            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
-            newLabel.setText( ''.join( htmls ) )
-
-            layout.addWidget( container )
-            window = Window()
-            window.setWindowTitle( commit.getOneliner() )
-            window.setLayout( layout )
-            #window.resize( 320, 240 )
-            window.show()
-        elif command == 'forward-search':
-            (hash, filename) = parameters.split( ':', 1 )
-            commit = global_allCommitsHash[hash]
-            commits = []
-            for c in reversed( global_allCommits ):
-                if c == commit:
-                    break
-                for f in c.getFilenames():
-                    if not passesPathFilter( f ):
-                        continue
-                    hashes = c.getHistory( f )
-                    foundCommit = False
-                    for commit.commitHash in hashes:
-                        commits.append( c )
-                        foundCommit = True
-                        break
-                    if foundCommit:
-                        break
-            htmls = []
-            htmls.extend( ['commits whose files in paths <strong>were changed</strong> by %s:<br />' % commit.getShortOnelinerHtml( True )] )
-            if commits:
-                def getLine( c ):
-                    if filename in c.getFilenames():
-                        return '%s' % c.getOnelinerWithDateHtml( True )
-                    else:
-                        return '<span style="color: #aaa;">%s</span>' % c.getOnelinerWithDateHtml( True )
-                htmls.extend( '<br />'.join( map( lambda c: getLine( c ), commits ) ) )
-            else:
-                htmls.extend( '(none)' )
-            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
-            htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
-            hashes = commit.getHistory( filename )
-            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
-            label.setText( ''.join( htmls ) )
-        else:
-            print( 'Error: handler for command "%s" not implemented' % command )
-    else:
-        on_commitLinkActivated( link )
-
-@QtCore.pyqtSlot( str )
-def on_commitLinkActivated( link ):
-    command_history = 'history:'
-    if link[:len(command_history)] == command_history:
-        (hash,filename) = link[len(command_history):].split( ':', 1 )
-        commit = global_allCommitsHash[hash]
-
-        layout = QtWidgets.QVBoxLayout()
-        (container, label) = createHistoryWidgets()
-
-        hashes = commit.getHistory( filename )
-        htmls = ['<strong>history:</strong> (<a href="forward-search:%s">forward-search</a>)<br />' % hash]
-        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: global_allCommitsHash[h], hashes ) ) ) )
-        label.setText( ''.join( htmls ) )
-
-        layout.addWidget( container )
-        window = Window()
-        window.setLayout( layout )
-        #window.resize( 320, 240 )
-        window.show()
-        return
-
-    for item in global_ui_commitList.selectedItems():
-        item.setSelected( False )
-    item = global_ui_commitListItemHash[link]
-    item.setSelected( True )
-    global_ui_commitList.setCurrentItem( item )
-
-@QtCore.pyqtSlot()
-def slot_selectCheckBoxes( checkBoxes, select, slot ):
-    for checkBox in checkBoxes:
-        checkBox.blockSignals( True )
-        checkBox.setChecked( select )
-        checkBox.blockSignals( False )
-    slot()
-
-@QtCore.pyqtSlot()
-def slot_updateCommitListInfo():
-    visibleItemsCount = 0
-    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
-        item = global_ui_commitList.topLevelItem( i )
-        if not item.isHidden():
-            visibleItemsCount += 1
-    global_ui_commitListInfo.setText( '%i/%i visible commits (%i selected)' % (
-        visibleItemsCount,
-        global_ui_commitList.topLevelItemCount(),
-        len( global_ui_commitList.selectedItems() )
-        ))
-
-def checkSearchTextFilter( commit, searchFilter, filterText, filterRegex ):
-    if global_ui_searchFilterLineEdit.text():
-        found = False
-        if not found:
-            if 'commit' in searchFilter and commit.commitHash[:len(filterText)] == filterText:
-                found = True
-        if not found:
-            if 'message' in searchFilter and filterRegex.search( commit.message ):
-                found = True
-        if not found:
-            if 'files in paths' in searchFilter or 'files not in paths' in searchFilter:
-                for filename in commit.getFilenames():
-                    if filterRegex.search( filename ):
-                        if passesPathFilter( filename ) and 'files in paths' in searchFilter:
-                            found = True
-                            break
-                        elif not passesPathFilter( filename ) and 'files not in paths' in searchFilter:
-                            found = True
-                            break
-        return found
-    else:
-        return True
-
-@QtCore.pyqtSlot()
-def doFiltering():
-    activeIncludeSpecialFilter = set()
-    for filterCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeIncludeSpecialFilter.add( filterCheckBox.text() )
-
-    activeIncludeFilter1 = set()
-    for filterCheckBox in global_ui_filterIncludeCheckBoxes1:
-        if filterCheckBox.isChecked():
-            activeIncludeFilter1.add( filterCheckBox.text() )
-
-    activeIncludeFilter2 = set()
-    for filterCheckBox in global_ui_filterIncludeCheckBoxes2:
-        if filterCheckBox.isChecked():
-            activeIncludeFilter2.add( filterCheckBox.text() )
-
-    activeObligatoryFilter = set()
-    for filterCheckBox in global_ui_filterObligatoryCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeObligatoryFilter.add( filterCheckBox.text() )
-
-    activeExcludeFilter = set()
-    for filterCheckBox in global_ui_filterExcludeCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeExcludeFilter.add( filterCheckBox.text() )
-
-    activeFindFilesFilter = set()
-    for filterCheckBox in global_ui_filterFindFilesCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeFindFilesFilter.add( filterCheckBox.text() )
-
-    activeFindFilesIncludeFilter = set()
-    for filterCheckBox in global_ui_filterFindFilesIncludeCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeFindFilesIncludeFilter.add( filterCheckBox.text() )
-
-    activeAuthorFilter = set()
-    for filterCheckBox in global_ui_filterAuthorCheckBoxes:
-        if filterCheckBox.isChecked():
-            activeAuthorFilter.add( filterCheckBox.text() )
-
-    searchFilter = set()
-    for filterCheckBox in global_ui_searchFilterCheckBoxes:
-        if filterCheckBox.isChecked():
-            searchFilter.add( filterCheckBox.text() )
-
-    filterInputText = global_ui_searchFilterLineEdit.text()
-    try:
-        filterRegex = re.compile( filterInputText, re.IGNORECASE )
-    except re.error:
-        filterRegex = re.compile( r'.*' )
-
-    # follow files and find commits (back in history):
-    foundCommitHashes = set()
-    for c in global_allCommits:
-        if set( c.tags ) & activeFindFilesFilter:
-            for filename in c.getFilenames():
-                if not passesPathFilter( filename ):
-                    continue
-                hashes = c.getHistory( filename )
-                foundCommitHashes.update( set( hashes ) )
-
-    # follow files and find commits (forward in history):
-    if global_ui_filterFindFilesForwardCheckBox and global_ui_filterFindFilesForwardCheckBox.isChecked():
-        # 1. find last commit with specified tags
-        lastCommit = None
-        for c in global_allCommits:
-            if set( c.tags ) & activeFindFilesFilter:
-                lastCommit = c
-                break
-        # 2. find all commits after the commit found in (2) that have files whose
-        # history crosses a commit with specified tags
-        if lastCommit:
-            for c in reversed( global_allCommits ):
-                if c == lastCommit:
-                    break
-                for filename in c.getFilenames():
-                    if not passesPathFilter( filename ):
-                        continue
-                    hashes = c.getHistory( filename )
-                    for hash in hashes:
-                        if set( global_allCommitsHash[hash].tags ) & activeFindFilesFilter:
-                            foundCommitHashes.add( c.commitHash )
-                            break
-
-    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
-        item = global_ui_commitList.topLevelItem( i )
-        commit = global_allCommitsHash[item.text( commitListItemColumn_commit )]
-        shouldBeVisible = True
-
-        if global_ui_filterAreaCheckBox.isChecked() and not global_ui_filterAreaOnlySearchCheckBox.isChecked():
-            if shouldBeVisible:
-                if not commit.author in activeAuthorFilter:
-                    shouldBeVisible = False
-
-            if shouldBeVisible:
-                for tag in activeObligatoryFilter:
-                    if not tag in commit.tags:
-                        shouldBeVisible = False
-                        break
-
-            if shouldBeVisible:
-                for tag in activeExcludeFilter:
-                    if tag in commit.tags:
-                        shouldBeVisible = False
-                        break
-
-            if shouldBeVisible:
-                if not 'consider all paths' in activeIncludeSpecialFilter and not somePassesPathFilter( commit.getFilenames(), False ):
-                    shouldBeVisible = False
-                else:
-                    if shouldBeVisible:
-                        foundATag = False
-                        for tag in commit.tags:
-                            if tag in activeIncludeFilter1:
-                                foundATag = True
-                                break
-                        if not foundATag:
-                            if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter1):
-                                shouldBeVisible = False
-
-                    if shouldBeVisible:
-                        foundATag = False
-                        for tag in commit.tags:
-                            if tag in activeIncludeFilter2:
-                                foundATag = True
-                                break
-                        if not foundATag:
-                            if commit.tags or (global_allTags and not 'untagged' in activeIncludeFilter2):
-                                shouldBeVisible = False
-
-                    if shouldBeVisible:
-                        if not checkSearchTextFilter( commit, searchFilter, filterInputText, filterRegex ):
-                            shouldBeVisible = False
-
-            if not shouldBeVisible:
-                if commit.commitHash in foundCommitHashes:
-                    foundATag = False
-                    for tag in commit.tags:
-                        if tag in activeFindFilesIncludeFilter:
-                            foundATag = True
-                            break
-                    if not foundATag:
-                        if not commit.tags and (not global_allTags or 'untagged' in activeFindFilesIncludeFilter):
-                            foundATag = True
-                    if foundATag:
-                        shouldBeVisible = True
-        elif global_ui_filterAreaCheckBox.isChecked() and global_ui_filterAreaOnlySearchCheckBox.isChecked():
-            if shouldBeVisible:
-                if not checkSearchTextFilter( commit, searchFilter, filterInputText, filterRegex ):
-                    shouldBeVisible = False
-
-        item.setHidden( not shouldBeVisible )
-
-    if global_ui_commitList.currentItem():
-        global_ui_commitList.scrollToItem( global_ui_commitList.currentItem() )
-
-    slot_updateCommitListInfo()
-
-def createTagCheckBoxes( groupTags, checkBoxList, checked, slot, allowButtons=True ):
-    ui_tagGridLayout = QtWidgets.QGridLayout()
-    ui_tagGridLayout.setVerticalSpacing( 0 )
-
-    enabledCheckBoxes = []
-    for row, group in enumerate( groupTags ):
-        (enabled, tags) = groupTags[group]
-        if not tags:
-            continue
-
-        ui_tagLineLayout = QtWidgets.QHBoxLayout()
-
-        ui_tagGridLayout.addWidget( QtWidgets.QLabel( '<strong>%s:</strong>' % group ), row, 0 )
-
-        rowCheckBoxList = []
-        for tag in tags:
-            filterCheckBox = QtWidgets.QCheckBox( tag )
-            filterCheckBox.setContentsMargins( 0, 0, 0, 0 )
-            rowCheckBoxList.append( filterCheckBox )
-            checkBoxList.append( filterCheckBox )
-            filterCheckBox.setChecked( checked )
-            if enabled:
-                filterCheckBox.clicked.connect( slot )
-            else:
-                filterCheckBox.setEnabled( False )
-            ui_tagLineLayout.addWidget( filterCheckBox )
-
-        ui_tagLineLayout.addStretch()
-
-        if enabled and allowButtons:
-            # note: If we use lambda below instead of functools.partial,
-            #       rowCheckBoxList in the slot refers to the last
-            #       rowCheckBoxList defined in this loop. This may be a python
-            #       error, because "rowCheckBoxList = []" above states
-            #       explicitely that we want a new list instance and do not
-            #       want to overwrite the last one. The effect is that each
-            #       button toggles all check boxes in the tab instead only
-            #       toggling the row.
-            ui_selectButton = QtWidgets.QPushButton( '[x]' )
-            ui_selectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, True, slot ) )
-            ui_unselectButton = QtWidgets.QPushButton( '[ ]' )
-            ui_unselectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, rowCheckBoxList, False, slot ) )
-            ui_tagLineLayout.addWidget( ui_selectButton )
-            ui_tagLineLayout.addWidget( ui_unselectButton )
-            enabledCheckBoxes.extend( rowCheckBoxList )
-
-        ui_tagGridLayout.addLayout( ui_tagLineLayout, row, 1 )
-
-    if enabledCheckBoxes:
-        row = len( groupTags )
-        #ui_tagGridLayout.addWidget( QtWidgets.QLabel( '<strong>all:</strong>' ), row, 0 )
-        ui_selectButton = QtWidgets.QPushButton( 'all' )
-        ui_selectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, enabledCheckBoxes, True, slot ) )
-        ui_unselectButton = QtWidgets.QPushButton( 'none' )
-        ui_unselectButton.clicked.connect( functools.partial( slot_selectCheckBoxes, enabledCheckBoxes, False, slot ) )
-        ui_tagLineLayout = QtWidgets.QHBoxLayout()
-        ui_tagLineLayout.addStretch()
-        ui_tagLineLayout.addWidget( ui_selectButton )
-        ui_tagLineLayout.addWidget( ui_unselectButton )
-        ui_tagGridLayout.addLayout( ui_tagLineLayout, row, 1 )
-
-    ui_tagGridWidget = QtWidgets.QWidget()
-    ui_tagGridWidget.setLayout( ui_tagGridLayout )
-    return ui_tagGridWidget
-
-def createFilterTabWidget( definedTagsGrouped, undefinedTags, allAuthorsGrouped ):
-    global global_ui_filterFindFilesForwardCheckBox
-
-    groupTags = collections.OrderedDict()
-    for group in global_allTagsGrouped:
-        groupTags[group] = (True, definedTagsGrouped[group])
-    if undefinedTags:
-        groupTags['undefined'] = (True, undefinedTags)
-
-    ui_filterTabWidget = QtWidgets.QTabWidget()
-    if groupTags:
-        ui_filterTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
-
-        groupTagsWithUntagged = copy.deepcopy( groupTags )
-        groupTagsWithUntagged['special'] = (True, ['untagged'])
-        ui_filterIncludeWidget1 = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes1, True, doFiltering )
-        ui_filterIncludeWidget2 = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterIncludeCheckBoxes2, True, doFiltering )
-        ui_filterObligatoryWidget = createTagCheckBoxes( groupTags, global_ui_filterObligatoryCheckBoxes, False, doFiltering )
-        ui_filterExcludeWidget = createTagCheckBoxes( groupTags, global_ui_filterExcludeCheckBoxes, False, doFiltering )
-        ui_filterFindFilesWidget = createTagCheckBoxes( groupTags, global_ui_filterFindFilesCheckBoxes, False, doFiltering )
-        ui_filterFindFilesIncludeWidget = createTagCheckBoxes( groupTagsWithUntagged, global_ui_filterFindFilesIncludeCheckBoxes, True, doFiltering )
-
-        ui_filterIncludeScrollArea1 = QtWidgets.QScrollArea()
-        ui_filterIncludeScrollArea1.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterIncludeScrollArea1.setWidget( ui_filterIncludeWidget1 )
-        ui_filterIncludeScrollArea2 = QtWidgets.QScrollArea()
-        ui_filterIncludeScrollArea2.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterIncludeScrollArea2.setWidget( ui_filterIncludeWidget2 )
-        ui_filterObligatoryScrollArea = QtWidgets.QScrollArea()
-        ui_filterObligatoryScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterObligatoryScrollArea.setWidget( ui_filterObligatoryWidget )
-        ui_filterExcludeScrollArea = QtWidgets.QScrollArea()
-        ui_filterExcludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterExcludeScrollArea.setWidget( ui_filterExcludeWidget )
-        ui_filterFindFilesScrollArea = QtWidgets.QScrollArea()
-        ui_filterFindFilesScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterFindFilesScrollArea.setWidget( ui_filterFindFilesWidget )
-        ui_filterFindFilesIncludeScrollArea = QtWidgets.QScrollArea()
-        ui_filterFindFilesIncludeScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-        ui_filterFindFilesIncludeScrollArea.setWidget( ui_filterFindFilesIncludeWidget )
-
-        global_ui_filterFindFilesForwardCheckBox = QtWidgets.QCheckBox( 'also search forward (slow)' )
-        global_ui_filterFindFilesForwardCheckBox.setChecked( False )
-        global_ui_filterFindFilesForwardCheckBox.clicked.connect( doFiltering )
-
-        ui_filterFindFilesTabWidget = QtWidgets.QTabWidget()
-        ui_filterFindFilesTabWidget.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed )
-        ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesScrollArea, 'follow files of tags' )
-        ui_filterFindFilesTabWidget.addTab( ui_filterFindFilesIncludeScrollArea, 'include tags' )
-        ui_filterFindFilesTabWidgetLayout = QtWidgets.QVBoxLayout()
-        ui_filterFindFilesTabWidgetLayout.addWidget( global_ui_filterFindFilesForwardCheckBox )
-        ui_filterFindFilesTabWidgetLayout.addWidget( ui_filterFindFilesTabWidget )
-        ui_filterFindFilesTabWidgetWidget = QtWidgets.QWidget()
-        ui_filterFindFilesTabWidgetWidget.setLayout( ui_filterFindFilesTabWidgetLayout )
-
-        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea1, 'include tags 1' )
-        ui_filterTabWidget.addTab( ui_filterIncludeScrollArea2, 'include tags 2' )
-        ui_filterTabWidget.addTab( ui_filterObligatoryScrollArea, 'obligatory tags' )
-        ui_filterTabWidget.addTab( ui_filterExcludeScrollArea, 'exclude tags' )
-        ui_filterTabWidget.addTab( ui_filterFindFilesTabWidgetWidget, 'find files' )
-
-    existsGroupWithSingleLetter = False # may happen if the group is auto-generated from first letter
-    groupAuthors = collections.OrderedDict()
-    for group, authors in allAuthorsGrouped.items():
-        groupAuthors[group] = (True, authors)
-        if len( group ) == 1:
-            existsGroupWithSingleLetter = True
-
-    ui_filterAuthorWidget = createTagCheckBoxes( groupAuthors, global_ui_filterAuthorCheckBoxes, True, doFiltering )
-
-    ui_filterAuthorScrollArea = QtWidgets.QScrollArea()
-    ui_filterAuthorScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
-    if existsGroupWithSingleLetter:
-        if groupTags:
-            ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
-        else:
-            ui_filterAuthorScrollArea.setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Ignored )
-            ui_filterAuthorScrollArea.setMinimumSize( QtCore.QSize( 0, 200.0 ) ) # TODO: find better solution
-    ui_filterAuthorScrollArea.setWidget( ui_filterAuthorWidget )
-
-    ui_filterTabWidget.addTab( ui_filterAuthorScrollArea, 'authors' )
-
-    return ui_filterTabWidget
-
-def createHistoryWidgets():
-    """
-    :return: (container, label)
-    :rtype: (QtWidgets.QScrollArea, QtWidgets.QLabel)
-    """
-    label = QtWidgets.QLabel()
-    label.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    label.linkActivated.connect( lambda link: labelLinkActivated( label, link ) )
-    layout = QtWidgets.QVBoxLayout()
-    layout.addWidget( label )
-    layout.addStretch()
-    widget = QtWidgets.QWidget()
-    widget.setLayout( layout )
-    container = QtWidgets.QScrollArea()
-    #container.setFrameShape( QtWidgets.QFrame.NoFrame )
-    container.setWidgetResizable( True )
-    container.setWidget( widget )
-    return container, label
-
 def main():
-
-    global includeDirectories
-    global includeFiles
-    global excludePatterns
-    global repositoryDir
-    global branch
-
-    global global_ui_commitList
-    global global_ui_commitListInfo
-    global global_ui_diffViewer
-    global global_ui_followViewer
-    global global_ui_followViewerScrollArea
-    global global_ui_filesList
-    global global_ui_commitInfo1
-    global global_ui_commitInfo2
-    global global_ui_filterAreaCheckBox
-    global global_ui_filterAreaOnlySearchCheckBox
-    global global_ui_searchFilterLineEdit
-    global global_ui_tagCheckBoxes
-    global global_ui_commitListItemHash
-    global global_ui_diffViewerCheckBox
-    global global_allCommits
-    global global_allCommitsHash
-    global global_allTags
-    global global_allTagsGrouped
-
     parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
     parser.add_argument( 'root', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
     parser.add_argument( 'paths', nargs='*', type=str, default=[], help = 'restrict to given paths' )
@@ -989,33 +80,33 @@ def main():
         repository = {}
 
     if 'root' in repository:
-        repositoryDir = os.path.join( configDir, repository['root'] )
+        Globals.repositoryDir = os.path.join( configDir, repository['root'] )
     else:
-        repositoryDir = args.root
-    branch = args.branch
+        Globals.repositoryDir = args.root
+    Globals.branch = args.branch
 
     if 'paths' in repository:
-        allPaths = list( map( lambda path: path if path[0] == ':' else os.path.join( repositoryDir, path ), repository['paths'] ) )
+        allPaths = list( map( lambda path: path if path[0] == ':' else os.path.join( Globals.repositoryDir, path ), repository['paths'] ) )
     else:
         allPaths = []
     allPaths.extend( args.paths )
     for path in allPaths:
         if path[0] == ':': # exclude pattern
-            excludePatterns.append( re.compile( path[1:] ) )
+            Globals.excludePatterns.append( re.compile( path[1:] ) )
         elif os.path.isdir( path ):
-            includeDirectories.append( os.path.relpath( path, repositoryDir ) )
+            Globals.includeDirectories.append( os.path.relpath( path, Globals.repositoryDir ) )
         elif os.path.isfile( path ):
-            includeFiles.append( os.path.relpath( path, repositoryDir ) )
+            Globals.includeFiles.append( os.path.relpath( path, Globals.repositoryDir ) )
         else:
             print( 'Error: %s is not a valid path.' % path )
             exit( 1 )
 
     if os.path.isfile( filepath_tagsJson ):
-        global_allTagsGrouped = json.load( open( filepath_tagsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
+        Globals.allTagsGrouped = json.load( open( filepath_tagsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
-        global_allTagsGrouped = {}
-    for group, tags in global_allTagsGrouped.items():
-        global_allTags.extend( tags )
+        Globals.allTagsGrouped = {}
+    for group, tags in Globals.allTagsGrouped.items():
+        Globals.allTags.extend( tags )
 
     if os.path.isfile( filepath_authorsJson ):
         allAuthorsHashGrouped = json.load( open( filepath_authorsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
@@ -1045,15 +136,15 @@ def main():
 
     # reading commits (1/3)...
 
-    global_allCommits = []
-    global_allCommitsHash = {}
+    Globals.allCommits = []
+    Globals.allCommitsHash = {}
     commitCounter = 1
     missingAuthors = set()
     newGroups = {}
     tagsUsedForCommits = set()
     # see https://git-scm.com/docs/pretty-formats
-    cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', branch]
-    for log in call_nullSeperated( cmd, cwd=repositoryDir ):
+    cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', Globals.branch]
+    for log in Utils.call_nullSeperated( cmd, cwd=Globals.repositoryDir ):
         if log:
             (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
 
@@ -1076,13 +167,13 @@ def main():
             parents = parents.split( ' ' )
             if not parents[0]:
                 parents = []
-            commit = Commit( commitCounter, commitHash, parents, author, email, date, message )
+            commit = Commit.Commit( commitCounter, commitHash, parents, author, email, date, message )
             if commit.commitHash in allTagsPerCommitHash:
                 commit.tags = allTagsPerCommitHash[commit.commitHash]
                 tagsUsedForCommits.update( commit.tags )
             commit.originalAuthor = originalAuthor
-            global_allCommits.append( commit )
-            global_allCommitsHash[commitHash] = commit
+            Globals.allCommits.append( commit )
+            Globals.allCommitsHash[commitHash] = commit
             commitCounter += 1
     if os.path.isfile( filepath_authorsJson ):
         for author in sorted( list( missingAuthors ) ):
@@ -1095,11 +186,11 @@ def main():
     # reading commits (2/3)...
 
     commit = None
-    cmd = ['git', 'log', '--reverse', '--format=%h', '--name-status', branch]
-    for log in call( cmd, cwd=repositoryDir ):
+    cmd = ['git', 'log', '--reverse', '--format=%h', '--name-status', Globals.branch]
+    for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
         if log:
             if not '\t' in log:
-                commit = global_allCommitsHash[log]
+                commit = Globals.allCommitsHash[log]
             else:
                 (status, file) = log.split( '\t', 1 )
                 commit.setStatus( status, file )
@@ -1108,16 +199,16 @@ def main():
 
     if not args.no_numstat:
         commit = None
-        cmd = ['git', 'log', '--reverse', '--format=%h', '--numstat', branch, '--']
-        if includeDirectories or includeFiles:
-            cmd.extend( includeDirectories )
-            cmd.extend( includeFiles )
+        cmd = ['git', 'log', '--reverse', '--format=%h', '--numstat', Globals.branch, '--']
+        if Globals.includeDirectories or Globals.includeFiles:
+            cmd.extend( Globals.includeDirectories )
+            cmd.extend( Globals.includeFiles )
         else:
             cmd.append( '.' )
-        for log in call( cmd, cwd=repositoryDir ):
+        for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
             if log:
                 if not '\t' in log:
-                    commit = global_allCommitsHash[log]
+                    commit = Globals.allCommitsHash[log]
                 else:
                     (added, removed, file) = log.split( '\t', 2 )
                     commit.addNumstat( added, removed, file )
@@ -1127,64 +218,64 @@ def main():
     if os.path.isfile( filepath_cacheJson ):
         cache = json.load( open( filepath_cacheJson, 'r' ) )
         for hash in cache['history']:
-            global_allCommitsHash[hash].hash_filename_history = cache['history'][hash]
+            Globals.allCommitsHash[hash].hash_filename_history = cache['history'][hash]
 
     # building window...
 
-    undefinedTags = sorted( tagsUsedForCommits - set( global_allTags ) )
+    undefinedTags = sorted( tagsUsedForCommits - set( Globals.allTags ) )
 
-    global_ui_commitList = QtWidgets.QTreeWidget()
-    global_ui_commitList.setRootIsDecorated( False )
-    global_ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
-    global_ui_commitList.setColumnCount( 7 )
-    global_ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
-    global_ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
-    global_ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
-    global_ui_commitList.currentItemChanged.connect( on_commitList_currentItemChanged )
-    global_ui_commitList.customContextMenuRequested.connect( on_commitList_customContextMenuRequested )
-    global_ui_commitList.itemSelectionChanged.connect( slot_updateCommitListInfo )
+    Globals.ui_commitList = QtWidgets.QTreeWidget()
+    Globals.ui_commitList.setRootIsDecorated( False )
+    Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
+    Globals.ui_commitList.setColumnCount( 7 )
+    Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
+    Globals.ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
+    Globals.ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+    Globals.ui_commitList.currentItemChanged.connect( CommitList.on_commitList_currentItemChanged )
+    Globals.ui_commitList.customContextMenuRequested.connect( CommitList.on_commitList_customContextMenuRequested )
+    Globals.ui_commitList.itemSelectionChanged.connect( CommitList.slot_updateCommitListInfo )
 
-    for commit in reversed( global_allCommits ):
+    for commit in reversed( Globals.allCommits ):
         readableLines = str( commit.added + commit.removed )
         readableTags = commit.getTagsOneliner()
         readableMessage = commit.getMessageOneliner()
         item = QtWidgets.QTreeWidgetItem( [str(commit.index), commit.commitHash, readableLines, readableTags, commit.getDateString(), commit.author, readableMessage] )
-        global_ui_commitListItemHash[commit.commitHash] = item
-        item.setFont( commitListItemColumn_commit, courierFont )
-        item.setFont( commitListItemColumn_author, boldFont )
-        item.setTextAlignment( commitListItemColumn_index, QtCore.Qt.AlignRight )
-        item.setTextAlignment( commitListItemColumn_lines, QtCore.Qt.AlignRight )
-        if not somePassesPathFilter( commit.getFilenames(), False ):
+        Globals.ui_commitListItemHash[commit.commitHash] = item
+        item.setFont( CommitList.commitListItemColumn_commit, courierFont )
+        item.setFont( CommitList.commitListItemColumn_author, boldFont )
+        item.setTextAlignment( CommitList.commitListItemColumn_index, QtCore.Qt.AlignRight )
+        item.setTextAlignment( CommitList.commitListItemColumn_lines, QtCore.Qt.AlignRight )
+        if not Filter.somePassesPathFilter( commit.getFilenames(), False ):
             for i in range( 0, item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
-        global_ui_commitList.addTopLevelItem( item )
+        Globals.ui_commitList.addTopLevelItem( item )
 
-    global_ui_diffViewer = QtWidgets.QTextEdit()
-    global_ui_diffViewer.setReadOnly( True )
-    global_ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
+    Globals.ui_diffViewer = QtWidgets.QTextEdit()
+    Globals.ui_diffViewer.setReadOnly( True )
+    Globals.ui_diffViewer.setWordWrapMode( QtGui.QTextOption.NoWrap )
 
-    (global_ui_followViewerScrollArea, global_ui_followViewer) = createHistoryWidgets()
-    global_ui_followViewerScrollArea.setHidden( True )
+    (Globals.ui_followViewerScrollArea, Globals.ui_followViewer) = CreateUi.createHistoryWidgets()
+    Globals.ui_followViewerScrollArea.setHidden( True )
 
     ui_fileViewers = QtWidgets.QSplitter()
     ui_fileViewers.setOrientation( QtCore.Qt.Horizontal )
-    ui_fileViewers.addWidget( global_ui_diffViewer )
-    ui_fileViewers.addWidget( global_ui_followViewerScrollArea )
+    ui_fileViewers.addWidget( Globals.ui_diffViewer )
+    ui_fileViewers.addWidget( Globals.ui_followViewerScrollArea )
     ui_fileViewers.setSizes( [3000, 1000] )
 
-    global_ui_diffViewerCheckBox = QtWidgets.QCheckBox( 'automatically diff all files' )
-    global_ui_diffViewerCheckBox.setChecked( not args.no_diff )
+    Globals.ui_diffViewerCheckBox = QtWidgets.QCheckBox( 'automatically diff all files' )
+    Globals.ui_diffViewerCheckBox.setChecked( not args.no_diff )
 
     ui_diffViewAreaLayout = QtWidgets.QVBoxLayout()
     ui_diffViewAreaLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_diffViewAreaLayout.addWidget( global_ui_diffViewerCheckBox )
+    ui_diffViewAreaLayout.addWidget( Globals.ui_diffViewerCheckBox )
     ui_diffViewAreaLayout.addWidget( ui_fileViewers )
     ui_diffViewAreaWidget = QtWidgets.QWidget()
     ui_diffViewAreaWidget.setLayout( ui_diffViewAreaLayout )
 
-    global_ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'enable filter' )
-    global_ui_filterAreaCheckBox.setChecked( True )
-    global_ui_filterAreaOnlySearchCheckBox = QtWidgets.QCheckBox( 'only search' )
+    Globals.ui_filterAreaCheckBox = QtWidgets.QCheckBox( 'enable filter' )
+    Globals.ui_filterAreaCheckBox.setChecked( True )
+    Globals.ui_filterAreaOnlySearchCheckBox = QtWidgets.QCheckBox( 'only search' )
     # signals are assigned later
 
     ui_vline = QtWidgets.QFrame()
@@ -1193,33 +284,33 @@ def main():
 
     ui_filterIncludeSpecialAreaLineLayout = QtWidgets.QHBoxLayout()
     ui_filterIncludeSpecialAreaLineLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaCheckBox )
-    ui_filterIncludeSpecialAreaLineLayout.addWidget( global_ui_filterAreaOnlySearchCheckBox )
+    ui_filterIncludeSpecialAreaLineLayout.addWidget( Globals.ui_filterAreaCheckBox )
+    ui_filterIncludeSpecialAreaLineLayout.addWidget( Globals.ui_filterAreaOnlySearchCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addWidget( ui_vline )
     for tag in ['consider all paths']:
         filterCheckBox = QtWidgets.QCheckBox( tag )
-        global_ui_filterIncludeSpecialCheckBoxes.append( filterCheckBox )
-        filterCheckBox.clicked.connect( doFiltering )
+        Globals.ui_filterIncludeSpecialCheckBoxes.append( filterCheckBox )
+        filterCheckBox.clicked.connect( Filter.doFiltering )
         ui_filterIncludeSpecialAreaLineLayout.addWidget( filterCheckBox )
     ui_filterIncludeSpecialAreaLineLayout.addStretch()
     ui_filterIncludeSpecialAreaLineWidget = QtWidgets.QWidget()
     ui_filterIncludeSpecialAreaLineWidget.setLayout( ui_filterIncludeSpecialAreaLineLayout )
 
-    ui_filterTabWidget = createFilterTabWidget( global_allTagsGrouped, undefinedTags, allAuthorsGrouped )
+    ui_filterTabWidget = CreateUi.createFilterTabWidget( Globals.allTagsGrouped, undefinedTags, allAuthorsGrouped )
 
-    global_ui_searchFilterLineEdit = QtWidgets.QLineEdit()
-    global_ui_searchFilterLineEdit.setClearButtonEnabled( True )
-    #global_ui_searchFilterLineEdit.editingFinished.connect( doFiltering )
-    global_ui_searchFilterLineEdit.textEdited.connect( doFiltering )
+    Globals.ui_searchFilterLineEdit = QtWidgets.QLineEdit()
+    Globals.ui_searchFilterLineEdit.setClearButtonEnabled( True )
+    #Globals.ui_searchFilterLineEdit.editingFinished.connect( doFiltering )
+    Globals.ui_searchFilterLineEdit.textEdited.connect( Filter.doFiltering )
 
     ui_filterSearchAreaLayout = QtWidgets.QHBoxLayout()
     ui_filterSearchAreaLayout.setContentsMargins( 0, 0, 0, 0 )
-    ui_filterSearchAreaLayout.addWidget( global_ui_searchFilterLineEdit )
+    ui_filterSearchAreaLayout.addWidget( Globals.ui_searchFilterLineEdit )
     for searchLocation in ['commit', 'message', 'files in paths', 'files not in paths']:
         filterCheckBox = QtWidgets.QCheckBox( searchLocation )
-        global_ui_searchFilterCheckBoxes.append( filterCheckBox )
+        Globals.ui_searchFilterCheckBoxes.append( filterCheckBox )
         filterCheckBox.setChecked( True )
-        filterCheckBox.clicked.connect( doFiltering )
+        filterCheckBox.clicked.connect( Filter.doFiltering )
         ui_filterSearchAreaLayout.addWidget( filterCheckBox )
     ui_filterSearchAreaWidget = QtWidgets.QWidget()
     ui_filterSearchAreaWidget.setLayout( ui_filterSearchAreaLayout )
@@ -1233,29 +324,29 @@ def main():
     ui_filterAreaWidget.setLayout( ui_filterAreaLayout )
 
     def filterCheckBoxesToggled():
-        filterEnabled = global_ui_filterAreaCheckBox.isChecked()
-        onlySearch = global_ui_filterAreaOnlySearchCheckBox.isChecked()
-        global_ui_filterAreaOnlySearchCheckBox.setEnabled( filterEnabled )
-        for ui_filterIncludeSpecialCheckBox in global_ui_filterIncludeSpecialCheckBoxes:
+        filterEnabled = Globals.ui_filterAreaCheckBox.isChecked()
+        onlySearch = Globals.ui_filterAreaOnlySearchCheckBox.isChecked()
+        Globals.ui_filterAreaOnlySearchCheckBox.setEnabled( filterEnabled )
+        for ui_filterIncludeSpecialCheckBox in Globals.ui_filterIncludeSpecialCheckBoxes:
             ui_filterIncludeSpecialCheckBox.setEnabled( filterEnabled and not onlySearch )
         ui_filterTabWidget.setVisible( filterEnabled and not onlySearch )
-        global_ui_searchFilterLineEdit.setEnabled( filterEnabled )
-        for ui_searchFilterCheckBox in global_ui_searchFilterCheckBoxes:
+        Globals.ui_searchFilterLineEdit.setEnabled( filterEnabled )
+        for ui_searchFilterCheckBox in Globals.ui_searchFilterCheckBoxes:
             ui_searchFilterCheckBox.setEnabled( filterEnabled )
 
-    global_ui_filterAreaCheckBox.toggled.connect( filterCheckBoxesToggled )
-    global_ui_filterAreaOnlySearchCheckBox.toggled.connect( filterCheckBoxesToggled )
-    global_ui_filterAreaCheckBox.clicked.connect( doFiltering )
-    global_ui_filterAreaOnlySearchCheckBox.clicked.connect( doFiltering )
+    Globals.ui_filterAreaCheckBox.toggled.connect( filterCheckBoxesToggled )
+    Globals.ui_filterAreaOnlySearchCheckBox.toggled.connect( filterCheckBoxesToggled )
+    Globals.ui_filterAreaCheckBox.clicked.connect( Filter.doFiltering )
+    Globals.ui_filterAreaOnlySearchCheckBox.clicked.connect( Filter.doFiltering )
 
     groupTags = collections.OrderedDict()
-    for group in global_allTagsGrouped:
-        groupTags[group] = (True, global_allTagsGrouped[group])
+    for group in Globals.allTagsGrouped:
+        groupTags[group] = (True, Globals.allTagsGrouped[group])
     if undefinedTags:
         groupTags['undefined'] = (False, undefinedTags)
 
     if groupTags:
-        ui_tagWidget = createTagCheckBoxes( groupTags, global_ui_tagCheckBoxes, False, on_tagCheckBox_clicked, allowButtons=False )
+        ui_tagWidget = CreateUi.createTagCheckBoxes( groupTags, Globals.ui_tagCheckBoxes, False, on_tagCheckBox_clicked, allowButtons=False )
 
         ui_tagScrollArea = QtWidgets.QScrollArea()
         ui_tagScrollArea.setFrameShape( QtWidgets.QFrame.NoFrame )
@@ -1267,50 +358,50 @@ def main():
     else:
         ui_tagAreaWidget = None
 
-    global_ui_commitInfo1 = QtWidgets.QLabel()
-    global_ui_commitInfo1.setText( 'commit' )
-    global_ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    global_ui_commitInfo1.setWordWrap( True )
-    global_ui_commitInfo1.linkActivated.connect( on_commitLinkActivated )
+    Globals.ui_commitInfo1 = QtWidgets.QLabel()
+    Globals.ui_commitInfo1.setText( 'commit' )
+    Globals.ui_commitInfo1.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    Globals.ui_commitInfo1.setWordWrap( True )
+    Globals.ui_commitInfo1.linkActivated.connect( GeneralUi.on_commitLinkActivated )
 
-    global_ui_commitInfo2 = QtWidgets.QLabel()
-    global_ui_commitInfo2.setText( 'meta data' )
-    global_ui_commitInfo2.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
-    global_ui_commitInfo2.setWordWrap( True )
-    global_ui_commitInfo2.linkActivated.connect( on_commitLinkActivated )
+    Globals.ui_commitInfo2 = QtWidgets.QLabel()
+    Globals.ui_commitInfo2.setText( 'meta data' )
+    Globals.ui_commitInfo2.setTextInteractionFlags( QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse )
+    Globals.ui_commitInfo2.setWordWrap( True )
+    Globals.ui_commitInfo2.linkActivated.connect( GeneralUi.on_commitLinkActivated )
 
-    global_ui_filesList = QtWidgets.QTreeWidget()
-    global_ui_filesList.setRootIsDecorated( False )
-    global_ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['lines', 'file'] ) )
-    global_ui_filesList.setColumnCount( 2 )
-    global_ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
-    global_ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
-    global_ui_filesList.itemSelectionChanged.connect( on_diffFiles_itemSelectionChanged )
-    global_ui_filesList.itemActivated.connect( on_filesList_itemActivated )
-    global_ui_filesList.currentItemChanged.connect( on_filesList_currentItemChanged )
+    Globals.ui_filesList = QtWidgets.QTreeWidget()
+    Globals.ui_filesList.setRootIsDecorated( False )
+    Globals.ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['lines', 'file'] ) )
+    Globals.ui_filesList.setColumnCount( 2 )
+    Globals.ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
+    Globals.ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
+    Globals.ui_filesList.itemSelectionChanged.connect( FileList.on_filesList_itemSelectionChanged )
+    Globals.ui_filesList.itemActivated.connect( FileList.on_filesList_itemActivated )
+    Globals.ui_filesList.currentItemChanged.connect( FileList.on_filesList_currentItemChanged )
 
     ui_diffSplitter = QtWidgets.QSplitter()
     ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
-    ui_diffSplitter.addWidget( global_ui_filesList )
+    ui_diffSplitter.addWidget( Globals.ui_filesList )
     ui_diffSplitter.addWidget( ui_diffViewAreaWidget )
     ui_diffSplitter.setSizes( [1000, 3000] )
 
     ui_commitEditorLayout = QtWidgets.QVBoxLayout()
-    ui_commitEditorLayout.addWidget( global_ui_commitInfo1 )
+    ui_commitEditorLayout.addWidget( Globals.ui_commitInfo1 )
     if ui_tagAreaWidget:
         ui_commitEditorLayout.addWidget( ui_tagAreaWidget )
-    ui_commitEditorLayout.addWidget( global_ui_commitInfo2 )
+    ui_commitEditorLayout.addWidget( Globals.ui_commitInfo2 )
     ui_commitEditorLayout.addWidget( ui_diffSplitter )
     ui_commitEditorWidget = QtWidgets.QWidget()
     ui_commitEditorWidget.setLayout( ui_commitEditorLayout )
 
-    global_ui_commitListInfo = QtWidgets.QLabel()
+    Globals.ui_commitListInfo = QtWidgets.QLabel()
 
     ui_commitSelectionLayout = QtWidgets.QVBoxLayout()
     ui_commitSelectionLayout.addWidget( ui_filterAreaWidget )
-    ui_commitSelectionLayout.addWidget( global_ui_commitList )
-    ui_commitSelectionLayout.addWidget( global_ui_commitListInfo )
-    ui_commitSelectionLayout.setStretchFactor( global_ui_commitList, 2 )
+    ui_commitSelectionLayout.addWidget( Globals.ui_commitList )
+    ui_commitSelectionLayout.addWidget( Globals.ui_commitListInfo )
+    ui_commitSelectionLayout.setStretchFactor( Globals.ui_commitList, 2 )
     ui_commitSelectionWidget = QtWidgets.QWidget()
     ui_commitSelectionWidget.setLayout( ui_commitSelectionLayout )
 
@@ -1321,30 +412,30 @@ def main():
     ui_centralSplitter.setSizes( [1000, 1000] )
 
     def mainWindow_onClose():
-        global_openWindows.clear()
+        Globals.openWindows.clear()
         return True
     ui_window = MainWindow( mainWindow_onClose )
-    ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( repositoryDir ), branch) )
+    ui_window.setWindowTitle( '%s (%s)' % (os.path.abspath( Globals.repositoryDir ), Globals.branch) )
     ui_window.setWindowState( QtCore.Qt.WindowMaximized )
     ui_window.setCentralWidget( ui_centralSplitter )
 
     ui_window.show()
 
     # note: setHidden() has to be called after window has been shown, that's why this code is here at the bottom
-    doFiltering()
+    Filter.doFiltering()
 
-    for i in range( 0, global_ui_commitList.topLevelItemCount() ):
-        item = global_ui_commitList.topLevelItem( i )
+    for i in range( 0, Globals.ui_commitList.topLevelItemCount() ):
+        item = Globals.ui_commitList.topLevelItem( i )
         if not item.isHidden():
-            global_ui_commitList.setCurrentItem( item )
+            Globals.ui_commitList.setCurrentItem( item )
             item.setSelected( True )
             break
-    global_ui_commitList.setFocus()
+    Globals.ui_commitList.setFocus()
 
     ui_app.exec_()
 
     allTagsPerCommitHash = collections.OrderedDict()
-    for commit in global_allCommits:
+    for commit in Globals.allCommits:
         if commit.tags:
             allTagsPerCommitHash[commit.commitHash] = commit.tags
     if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
@@ -1354,7 +445,7 @@ def main():
 
     cache = collections.OrderedDict()
     cache['history'] = collections.OrderedDict()
-    for commit in global_allCommits:
+    for commit in Globals.allCommits:
         if commit.hash_filename_history:
             cache['history'][commit.commitHash] = commit.hash_filename_history
     if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
