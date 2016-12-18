@@ -742,7 +742,7 @@ def doFiltering():
                             foundATag = True
                     if foundATag:
                         shouldBeVisible = True
-        elif global_ui_filterAreaOnlySearchCheckBox.isChecked():
+        elif global_ui_filterAreaCheckBox.isChecked() and global_ui_filterAreaOnlySearchCheckBox.isChecked():
             if shouldBeVisible:
                 if not checkSearchTextFilter( commit, searchFilter, filterInputText, filterRegex ):
                     shouldBeVisible = False
