@@ -300,7 +300,7 @@ def main():
 
     Globals.ui_searchFilterLineEdit = QtWidgets.QLineEdit()
     Globals.ui_searchFilterLineEdit.setClearButtonEnabled( True )
-    #Globals.ui_searchFilterLineEdit.editingFinished.connect( doFiltering )
+    #Globals.ui_searchFilterLineEdit.editingFinished.connect( Filter.doFiltering )
     Globals.ui_searchFilterLineEdit.textEdited.connect( Filter.doFiltering )
 
     ui_filterSearchAreaLayout = QtWidgets.QHBoxLayout()
