@@ -6,6 +6,16 @@ import datetime
 class CommitFile:
     def __init__( self, name ):
         self.name = name
+        # status from --name-status may be A|C|D|M|R|T|U; all status identifiers:
+        # - Added (A)
+        # - Copied (C)
+        # - Deleted (D)
+        # - Modified (M)
+        # - Renamed (R)
+        # - have their type (i.e. regular file, symlink, submodule, …​) changed (T)
+        # - are Unmerged (U)
+        # - are Unknown (X)
+        # - have had their pairing Broken (B)
         self.status = '?'
         self.added = 0
         self.removed = 0

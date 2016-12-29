@@ -124,10 +124,28 @@ def on_commitList_currentItemChanged( current, before ):
             readableLines = str( file.added + file.removed )
             item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
             if Filter.passesPathFilter( name ):
-                item.setForeground( FileList.filesListItemColumn_filename, {'M':item.foreground(0), 'A': QtGui.QBrush( QtCore.Qt.darkGreen ), 'D': QtGui.QBrush( QtCore.Qt.red )}[status] )
+                colors = {
+                    'M': item.foreground(0),
+                    'A': QtGui.QBrush( QtCore.Qt.darkGreen ),
+                    'D': QtGui.QBrush( QtCore.Qt.red ),
+                    'C': item.foreground(0),
+                    'R': item.foreground(0),
+                    'T': item.foreground(0),
+                    'U': item.foreground(0)
+                    }
+                item.setForeground( FileList.filesListItemColumn_filename, colors[status[0]] )
             else:
+                colors = {
+                    'M': QtGui.QBrush( QtCore.Qt.lightGray ),
+                    'A': QtGui.QBrush( QtGui.QColor(164,192,164) ),
+                    'D': QtGui.QBrush( QtGui.QColor(255,192,192) ),
+                    'C': QtGui.QBrush( QtCore.Qt.lightGray ),
+                    'R': QtGui.QBrush( QtCore.Qt.lightGray ),
+                    'T': QtGui.QBrush( QtCore.Qt.lightGray ),
+                    'U': QtGui.QBrush( QtCore.Qt.lightGray )
+                    }
                 item.setForeground( FileList.filesListItemColumn_lines, QtGui.QBrush( QtCore.Qt.lightGray ) )
-                item.setForeground( FileList.filesListItemColumn_filename, {'M':QtGui.QBrush( QtCore.Qt.lightGray ), 'A': QtGui.QBrush( QtGui.QColor(164,192,164) ), 'D': QtGui.QBrush( QtGui.QColor(255,192,192) )}[status] )
+                item.setForeground( FileList.filesListItemColumn_filename, colors[status[0]] )
             Globals.ui_filesList.addTopLevelItem( item )
 
         # set parents/children background
