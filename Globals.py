@@ -1,10 +1,14 @@
 
+from PyQt5 import QtWidgets, QtGui, QtCore
+
 repositoryDir = None
 branch = None
 
 includeDirectories = []
 includeFiles = []
 excludePatterns = [] # note: not used for git commands
+
+transparentIcon = None
 
 ui_commitList = None
 ui_commitListInfo = None

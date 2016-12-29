@@ -100,7 +100,7 @@ def on_commitList_currentItemChanged( current, before ):
     for (item, brush) in Globals.previousBackgroundList:
         #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
         #    item.setBackground( col, brush )
-        item.setIcon( 0, QtGui.QIcon() )
+        item.setIcon( 0, Globals.transparentIcon )
 
     if current:
         Globals.selectedCommit = Globals.allCommitsHash[current.text( commitListItemColumn_commit )]

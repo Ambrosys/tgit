@@ -252,6 +252,10 @@ def main():
 
     # building window...
 
+    transparentPixmap = QtGui.QPixmap( 64, 64 )
+    transparentPixmap.fill( QtGui.QColor( 0, 0, 0, 0 ) )
+    Globals.transparentIcon = QtGui.QIcon( transparentPixmap )
+
     undefinedTags = sorted( tagsUsedForCommits - set( Globals.allTags ) )
 
     Globals.ui_commitList = QtWidgets.QTreeWidget()
@@ -280,6 +284,7 @@ def main():
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
         for col in range( 0, item.columnCount() ):
             item.setBackground( col, QtGui.QBrush( map_author_color[commit.author] ) )
+        item.setIcon( 0, Globals.transparentIcon )
         Globals.ui_commitList.addTopLevelItem( item )
 
     Globals.ui_diffViewer = QtWidgets.QTextEdit()
