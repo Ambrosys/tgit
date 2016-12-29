@@ -93,14 +93,14 @@ def on_commitList_currentItemChanged( current, before ):
     :type before: QtWidgets.QTreeWidgetItem
     """
 
-    #pixmap = QtGui.QPixmap( 64, 64 )
-    #pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
+    pixmap = QtGui.QPixmap( 64, 64 )
+    pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
 
     # restore backgrounds
     for (item, brush) in Globals.previousBackgroundList:
-        for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
-            item.setBackground( col, brush )
-        #item.setIcon( 0, QtGui.QIcon() )
+        #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
+        #    item.setBackground( col, brush )
+        item.setIcon( 0, QtGui.QIcon() )
 
     if current:
         Globals.selectedCommit = Globals.allCommitsHash[current.text( commitListItemColumn_commit )]
@@ -137,9 +137,9 @@ def on_commitList_currentItemChanged( current, before ):
         for c in family:
             item = Globals.ui_commitListItemHash[c.commitHash]
             Globals.previousBackgroundList.append( (item, item.background(0)) )
-            for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
-                item.setBackground( col, QtGui.QBrush( QtGui.QColor( 230, 108, 30, 32 ) ) )
-            #item.setIcon( 0, QtGui.QIcon( pixmap ) )
+            #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
+            #    item.setBackground( col, QtGui.QBrush( QtGui.QColor( 230, 108, 30, 32 ) ) )
+            item.setIcon( 0, QtGui.QIcon( pixmap ) )
 
         if Globals.ui_diffViewerCheckBox.isChecked():
             cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
