@@ -247,7 +247,8 @@ def main():
     if os.path.isfile( filepath_cacheJson ):
         cache = json.load( open( filepath_cacheJson, 'r' ) )
         for hash in cache['history']:
-            Globals.allCommitsHash[hash].hash_filename_history = cache['history'][hash]
+            if hash in Globals.allCommitsHash:
+                Globals.allCommitsHash[hash].hash_filename_history = cache['history'][hash]
 
     # building window...
 
