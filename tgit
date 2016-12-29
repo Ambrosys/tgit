@@ -143,7 +143,7 @@ def main():
     newGroups = {}
     tagsUsedForCommits = set()
     # see https://git-scm.com/docs/pretty-formats
-    cmd = ['git', 'log', '-z', '--reverse', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', Globals.branch]
+    cmd = ['git', 'log', '-z', '--reverse', '--topo-order', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', Globals.branch]
     for log in Utils.call_nullSeperated( cmd, cwd=Globals.repositoryDir ):
         if log:
             (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
@@ -186,7 +186,7 @@ def main():
     # reading commits (2/3)...
 
     commit = None
-    cmd = ['git', 'log', '--reverse', '--format=%h', '--name-status', Globals.branch]
+    cmd = ['git', 'log', '--reverse', '--topo-order', '--format=%h', '--name-status', Globals.branch]
     for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
         if log:
             if not '\t' in log:
@@ -199,7 +199,7 @@ def main():
 
     if not args.no_numstat:
         commit = None
-        cmd = ['git', 'log', '--reverse', '--format=%h', '--numstat', Globals.branch, '--']
+        cmd = ['git', 'log', '--reverse', '--topo-order', '--format=%h', '--numstat', Globals.branch, '--']
         if Globals.includeDirectories or Globals.includeFiles:
             cmd.extend( Globals.includeDirectories )
             cmd.extend( Globals.includeFiles )
