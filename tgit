@@ -124,9 +124,9 @@ def main():
                 allAuthorsHash[originalAuthor] = author
 
     if os.path.isfile( filepath_commitsJson ):
-        allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ) )
+        allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
-        allTagsPerCommitHash = {}
+        allTagsPerCommitHash = collections.OrderedDict()
 
     ui_app = QtWidgets.QApplication( [] )
 
@@ -434,12 +434,17 @@ def main():
 
     ui_app.exec_()
 
+    allTagsPerCommitHashBefore = allTagsPerCommitHash
     allTagsPerCommitHash = collections.OrderedDict()
     for commit in Globals.allCommits:
         if commit.tags:
             allTagsPerCommitHash[commit.commitHash] = commit.tags
     if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
-        json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
+        changed = allTagsPerCommitHash != allTagsPerCommitHashBefore
+        if changed:
+            button = QtWidgets.QMessageBox.question( None, "Save tags?", "Tags have changed. Save them?" )
+            if button == QtWidgets.QMessageBox.Yes:
+                json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
 
     # save cache
 
