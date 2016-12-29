@@ -90,7 +90,11 @@ class Commit:
         return '%s: %s' % (self.getShortOnelinerHtml( withLink ), self.getMessageOneliner())
 
     def getMultilinerHtml( self ):
-        (m1, m2) = self.message.split( '\n', 1 )
+        if '\n' in self.message:
+            (m1, m2) = self.message.split( '\n', 1 )
+        else:
+            m1 = self.message
+            m2 = ''
         m1 = m1.strip().replace( '\n', '<br />' )
         m2 = m2.strip().replace( '\n', '<br />' )
         if m2:
