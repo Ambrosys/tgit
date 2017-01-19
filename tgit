@@ -53,6 +53,8 @@ def main():
     parser.add_argument( '--repository', metavar='FILENAME', type=str, default='tgit-repository.json', help = 'repository config file, default: %(default)s' )
     parser.add_argument( '--cache', metavar='FILENAME', type=str, default='tgit-cache.json', help = 'cache for commit history, default: %(default)s' )
     parser.add_argument( '--no-diff', action='store_true', help = 'deactivate "automatically diff all files"' )
+    parser.add_argument( '--no-cache', action='store_true', help = 'do not save cache file' )
+    parser.add_argument( '-r', '--read-only', action='store_true', help = 'read-only mode' )
     args = parser.parse_args()
 
     if args.no_numstat and args.full_numstat:
@@ -66,6 +68,8 @@ def main():
     if not os.path.isdir( args.config_dir ):
         print( 'Error: %s is not a directory.' % args.config_dir )
         exit( 1 )
+
+    Globals.readOnlyMode = args.read_only
 
     configDir = args.config_dir
     filepath_tagsJson = os.path.join( configDir, args.tags )
@@ -382,7 +386,7 @@ def main():
     if undefinedTags:
         groupTags['undefined'] = (False, undefinedTags)
 
-    if groupTags:
+    if not Globals.readOnlyMode and groupTags:
         ui_tagWidget = CreateUi.createTagCheckBoxes( groupTags, Globals.ui_tagCheckBoxes, False, on_tagCheckBox_clicked, allowButtons=False )
 
         ui_tagScrollArea = QtWidgets.QScrollArea()
@@ -471,27 +475,29 @@ def main():
 
     ui_app.exec_()
 
-    allTagsPerCommitHashBefore = allTagsPerCommitHash
-    allTagsPerCommitHash = collections.OrderedDict()
-    for commit in Globals.allCommits:
-        if commit.tags:
-            allTagsPerCommitHash[commit.commitHash] = commit.tags
-    if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
-        changed = allTagsPerCommitHash != allTagsPerCommitHashBefore
-        if changed:
-            button = QtWidgets.QMessageBox.question( None, "Save tags?", "Tags have changed. Save them?" )
-            if button == QtWidgets.QMessageBox.Yes:
-                json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
+    if not Globals.readOnlyMode:
+        allTagsPerCommitHashBefore = allTagsPerCommitHash
+        allTagsPerCommitHash = collections.OrderedDict()
+        for commit in Globals.allCommits:
+            if commit.tags:
+                allTagsPerCommitHash[commit.commitHash] = commit.tags
+        if allTagsPerCommitHash or os.path.isfile( filepath_commitsJson ): # do not create file if not necessary
+            changed = allTagsPerCommitHash != allTagsPerCommitHashBefore
+            if changed:
+                button = QtWidgets.QMessageBox.question( None, "Save tags?", "Tags have changed. Save them?" )
+                if button == QtWidgets.QMessageBox.Yes:
+                    json.dump( allTagsPerCommitHash, open( filepath_commitsJson, 'w' ), indent=2 )
 
     # save cache
 
-    cache = collections.OrderedDict()
-    cache['history'] = collections.OrderedDict()
-    for commit in Globals.allCommits:
-        if commit.hash_filename_history:
-            cache['history'][commit.commitHash] = commit.hash_filename_history
-    if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
-        json.dump( cache, open( filepath_cacheJson, 'w' ), indent=2 )
+    if not args.no_cache:
+        cache = collections.OrderedDict()
+        cache['history'] = collections.OrderedDict()
+        for commit in Globals.allCommits:
+            if commit.hash_filename_history:
+                cache['history'][commit.commitHash] = commit.hash_filename_history
+        if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
+            json.dump( cache, open( filepath_cacheJson, 'w' ), indent=2 )
 
 if __name__ == '__main__':
     main()

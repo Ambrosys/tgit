@@ -24,14 +24,15 @@ def showContextMenu( item, globalPos ):
     """
     receiver = TagMenuSlot()
     menu = QtWidgets.QMenu( receiver )
-    addMenu = menu.addMenu( 'add' )
-    removeMenu = menu.addMenu( 'remove' )
-    for group in Globals.allTagsGrouped:
-        addSubMenu = addMenu.addMenu( group )
-        removeSubMenu = removeMenu.addMenu( group )
-        for tag in Globals.allTagsGrouped[group]:
-            addSubMenu.addAction( tag, receiver.slot_addTag )
-            removeSubMenu.addAction( tag, receiver.slot_removeTag )
+    if not Globals.readOnlyMode:
+        addMenu = menu.addMenu( 'add' )
+        removeMenu = menu.addMenu( 'remove' )
+        for group in Globals.allTagsGrouped:
+            addSubMenu = addMenu.addMenu( group )
+            removeSubMenu = removeMenu.addMenu( group )
+            for tag in Globals.allTagsGrouped[group]:
+                addSubMenu.addAction( tag, receiver.slot_addTag )
+                removeSubMenu.addAction( tag, receiver.slot_removeTag )
     menu.addAction( 'copy hashes', on_action_copyHashes )
     menu.addAction( 'copy hashes, tags, message', on_action_copyHashesWithTagsAndMessage )
 

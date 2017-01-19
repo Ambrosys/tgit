@@ -10,6 +10,8 @@ excludePatterns = [] # note: not used for git commands
 
 transparentIcon = None
 
+readOnlyMode = False
+
 ui_commitList = None
 ui_commitListInfo = None
 ui_diffViewer = None
