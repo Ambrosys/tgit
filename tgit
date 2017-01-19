@@ -15,6 +15,7 @@ import collections
 import re
 import argparse
 import os
+import datetime
 
 @QtCore.pyqtSlot()
 def on_tagCheckBox_clicked():
@@ -38,6 +39,28 @@ class MainWindow( QtWidgets.QMainWindow ):
             event.accept()
         else:
             event.ignore()
+
+def getYoungestFollowingFirstParent( commit_, parent_ ):
+    if commit_._maxDate is not None:
+        return commit_._maxDate
+    maxDate = datetime.datetime.min.replace( tzinfo=datetime.timezone.utc )
+    commit = parent_
+    parent = None
+    children = [commit_]
+    while len( children ) == 1:
+        parent = commit
+        commit = children[0]
+        parents = list( commit.getParentsUnsorted( Globals.allCommitsHash ) )
+        if len( parents ) >= 1 and parents[0] == parent:
+            maxDate = commit.date
+            children = commit.getChildrenUnsorted()
+        else:
+            children = []
+            break
+    if len( children ) > 1:
+        maxDate = max( map( lambda child: getYoungestFollowingFirstParent( child, commit ), children ) )
+    commit_._maxDate = maxDate
+    return maxDate
 
 def main():
     parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
@@ -217,6 +240,63 @@ def main():
                     (added, removed, file) = log.split( '\t', 2 )
                     commit.addNumstat( added, removed, file )
 
+    # reconstructing branch names
+
+    def setBranchName( destination, name ):
+        destination._branchUncertainty = 0
+        destination._branch = name
+
+    def inheritBranchName( destination, origin, uncertainty = 0 ):
+        destination._branchUncertainty = origin._branchUncertainty + uncertainty
+        destination._branch = origin._branch
+
+    mergeCommitRegex_firstIntoSecond1 = re.compile( "^merge\\b(?:.*)?\\bbranch '([^']+)'.*\\binto ([^ ().]+).*$", re.IGNORECASE )
+    mergeCommitRegex_firstIntoSecond2 = re.compile( "^merge from ([^ ()]+)\\b.*into ([^ ().]+).*$", re.IGNORECASE )
+    mergeCommitRegex_firstIntoCurrent1 = re.compile( "^merge\\b(?:.*)?\\bbranch '([^']+)'.*$", re.IGNORECASE )
+    mergeCommitRegex_firstIntoCurrent2 = re.compile( "^merge from ([^ ().]+).*$", re.IGNORECASE )
+    firstCommit = True
+    for c in reversed( Globals.allCommits ):
+        if firstCommit:
+            firstCommit = False
+            assert not c.getChildren()
+            assert not c._branch
+            setBranchName( c, Globals.branch )
+        else:
+            if not c._branch:
+                children = list( c.getChildrenUnsorted() )
+                if len( children ) == 1:
+                    inheritBranchName( c, children[0] )
+                elif len( children ) >= 2:
+                    # use child with longest path for first parent
+                    dates = list( map( lambda child: getYoungestFollowingFirstParent( child, c ), children ) )
+                    youngestDate = max( dates )
+                    youngestItems = [children[i] for i in range(len(dates)) if dates[i] == youngestDate]
+                    if len(youngestItems) == 1:
+                        if youngestItems[0]._branch:
+                            inheritBranchName( c, youngestItems[0], 1 )
+
+        parents = list( c.getParentsUnsorted( Globals.allCommitsHash ) )
+        if len( parents ) == 2:
+            messageFirstLine = c.message.split( '\n', 1 )[0]
+            m = None
+            if not m:
+                for firstIntoSecond in [mergeCommitRegex_firstIntoSecond1, mergeCommitRegex_firstIntoSecond2]:
+                    m = firstIntoSecond.match( messageFirstLine )
+                    if m:
+                        c._recognizedMerges = [m.group(1), m.group(2)]
+                        setBranchName( parents[0], m.group(2) )
+                        setBranchName( parents[1], m.group(1) )
+                        break
+            if not m:
+                for firstIntoCurrent in [mergeCommitRegex_firstIntoCurrent1, mergeCommitRegex_firstIntoCurrent2]:
+                    m = firstIntoCurrent.match( messageFirstLine )
+                    if m:
+                        c._recognizedMerges = [m.group(1), '']
+                        inheritBranchName( parents[0], c )
+                        setBranchName( parents[1], m.group(1) )
+                        break
+
+
     # define colors
 
     map_color = {}
@@ -264,8 +344,8 @@ def main():
 
     Globals.ui_commitList = QtWidgets.QTreeWidget()
     Globals.ui_commitList.setRootIsDecorated( False )
-    Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'tags', 'date', 'author', 'message'] ) )
-    Globals.ui_commitList.setColumnCount( 7 )
+    Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'branch', 'tags', 'date', 'author', 'message'] ) )
+    Globals.ui_commitList.setColumnCount( 8 )
     Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     Globals.ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     Globals.ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
@@ -275,9 +355,10 @@ def main():
 
     for commit in reversed( Globals.allCommits ):
         readableLines = str( commit.added + commit.removed )
+        readableBranch = commit.getBranchOneliner()
         readableTags = commit.getTagsOneliner()
         readableMessage = commit.getMessageOneliner()
-        item = QtWidgets.QTreeWidgetItem( [str(commit.index), commit.commitHash, readableLines, readableTags, commit.getDateString(), commit.author, readableMessage] )
+        item = QtWidgets.QTreeWidgetItem( [str(commit.index), commit.commitHash, readableLines, readableBranch, readableTags, commit.getDateString(), commit.author, readableMessage] )
         Globals.ui_commitListItemHash[commit.commitHash] = item
         item.setFont( CommitList.commitListItemColumn_commit, courierFont )
         item.setFont( CommitList.commitListItemColumn_author, boldFont )

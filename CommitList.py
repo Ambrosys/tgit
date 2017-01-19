@@ -14,7 +14,8 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1
 commitListItemColumn_lines = 2
-commitListItemColumn_tags = 3
+commitListItemColumn_branch = 3
+commitListItemColumn_tags = 4
 commitListItemColumn_author = 5
 
 def showContextMenu( item, globalPos ):

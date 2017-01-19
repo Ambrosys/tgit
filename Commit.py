@@ -49,6 +49,11 @@ class Commit:
         self.removed = 0
         self.tags = []
         self.hash_filename_history = {}
+        self._children = None
+        self._branch = None
+        self._recognizedMerges = None # a and b into c would be [a, b, c]
+        self._maxDate = None
+        self._branchUncertainty = 0
 
     def _ensureFile( self, filename ):
         if filename in self.filesHash:
@@ -76,16 +81,23 @@ class Commit:
     def getFilenames( self ):
         return map( lambda file: file.name, self.files )
 
+    def getChildrenUnsorted( self ):
+        if self._children is None:
+            self._children = []
+            for c in Globals.allCommits:
+                if self.commitHash in c.parents:
+                    self._children.append( c )
+        return self._children
+
     def getChildren( self ):
-        children = []
-        for c in Globals.allCommits:
-            if self.commitHash in c.parents:
-                children.append( c )
-        return sorted( children, key=lambda c: c.index, reverse=True )
+        return sorted( self.getChildrenUnsorted(), key=lambda c: c.index, reverse=True )
+
+    def getParentsUnsorted( self, commitsHash ):
+        parents = map( lambda h: commitsHash[h], self.parents )
+        return parents
 
     def getParents( self, commitsHash ):
-        parents = map( lambda h: commitsHash[h], self.parents )
-        return sorted( parents, key=lambda c: c.index, reverse=True )
+        return sorted( self.getParentsUnsorted( commitsHash ), key=lambda c: c.index, reverse=True )
 
     def getOneliner( self ):
         return '%i: %s: %s' % (self.index, self.commitHash, self.getMessageOneliner())
@@ -124,6 +136,16 @@ class Commit:
                 tags.append( tag )
         tags.extend( sorted( list( set( self.tags ) - set( Globals.allTags ) ) ) )
         return tags
+
+    def getBranchOneliner( self ):
+        if self._branch:
+            if self._branchUncertainty == 0:
+                return self._branch
+            elif self._branchUncertainty <= 3:
+                return '%s%s' % (self._branch, '?' * self._branchUncertainty)
+            else:
+                return '%s%s' % (self._branch, '?+%i' % (self._branchUncertainty - 1))
+        return ''
 
     def getTagsOneliner( self ):
         return ', '.join( self.getTagsSorted() )
