@@ -12,6 +12,9 @@ transparentIcon = None
 
 readOnlyMode = False
 
+normalPointSize = 9
+smallPointSize = 8
+
 ui_commitList = None
 ui_commitListInfo = None
 ui_diffViewer = None

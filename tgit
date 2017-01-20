@@ -157,9 +157,17 @@ def main():
 
     ui_app = QtWidgets.QApplication( [] )
 
+    normalFont = QtGui.QFont()
+    normalFont.setPointSize( Globals.normalPointSize )
+    smallFont = QtGui.QFont()
+    smallFont.setPointSize( Globals.smallPointSize )
     courierFont = QtGui.QFont( 'Courier New' )
+    courierFont.setPointSize( Globals.smallPointSize )
     boldFont = QtGui.QFont()
+    boldFont.setPointSize( Globals.smallPointSize )
     boldFont.setBold( True )
+
+    QtWidgets.QApplication.setFont( normalFont )
 
     # reading commits (1/3)...
 
@@ -378,6 +386,8 @@ def main():
             readableMessage
             ] )
         Globals.ui_commitListItemHash[commit.commitHash] = item
+        for i in range( 8 ):
+            item.setFont( i, smallFont )
         item.setFont( CommitList.commitListItemColumn_commit, courierFont )
         item.setFont( CommitList.commitListItemColumn_author, boldFont )
         item.setTextAlignment( CommitList.commitListItemColumn_index, QtCore.Qt.AlignRight )

@@ -100,6 +100,9 @@ def on_commitList_currentItemChanged( current, before ):
     pixmap = QtGui.QPixmap( 64, 64 )
     pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
 
+    smallFont = QtGui.QFont()
+    smallFont.setPointSize( Globals.smallPointSize )
+
     # restore backgrounds
     for (item, brush) in Globals.previousBackgroundList:
         #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
@@ -127,6 +130,8 @@ def on_commitList_currentItemChanged( current, before ):
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
             item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
+            for i in range( 8 ):
+                item.setFont( i, smallFont )
             if Filter.passesPathFilter( name ):
                 colors = {
                     'M': item.foreground(0),
