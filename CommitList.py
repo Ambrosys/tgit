@@ -16,7 +16,9 @@ commitListItemColumn_commit = 1
 commitListItemColumn_lines = 2
 commitListItemColumn_branch = 3
 commitListItemColumn_tags = 4
-commitListItemColumn_author = 5
+commitListItemColumn_date = 5
+commitListItemColumn_author = 6
+commitListItemColumn_message = 7
 
 def showContextMenu( item, globalPos ):
     """
