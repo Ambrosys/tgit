@@ -44,6 +44,9 @@ def checkSearchTextFilter( commit, searchFilter, filterText, filterRegex ):
             if 'commit' in searchFilter and commit.commitHash[:len(filterText)] == filterText:
                 found = True
         if not found:
+            if 'branch' in searchFilter and filterRegex.search( commit.getBranch() ):
+                found = True
+        if not found:
             if 'message' in searchFilter and filterRegex.search( commit.message ):
                 found = True
         if not found:

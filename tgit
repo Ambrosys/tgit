@@ -456,7 +456,7 @@ def main():
     ui_filterSearchAreaLayout = QtWidgets.QHBoxLayout()
     ui_filterSearchAreaLayout.setContentsMargins( 0, 0, 0, 0 )
     ui_filterSearchAreaLayout.addWidget( Globals.ui_searchFilterLineEdit )
-    for searchLocation in ['commit', 'message', 'files in paths', 'files not in paths']:
+    for searchLocation in ['commit', 'branch', 'message', 'files in paths', 'files not in paths']:
         filterCheckBox = QtWidgets.QCheckBox( searchLocation )
         Globals.ui_searchFilterCheckBoxes.append( filterCheckBox )
         filterCheckBox.setChecked( True )

@@ -137,6 +137,11 @@ class Commit:
         tags.extend( sorted( list( set( self.tags ) - set( Globals.allTags ) ) ) )
         return tags
 
+    def getBranch( self ):
+        if self._branch:
+            return self._branch
+        return ''
+
     def getBranchOneliner( self ):
         if self._branch:
             if self._branchUncertainty == 0:
