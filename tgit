@@ -344,7 +344,16 @@ def main():
 
     Globals.ui_commitList = QtWidgets.QTreeWidget()
     Globals.ui_commitList.setRootIsDecorated( False )
-    Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['#', 'commit', 'lines', 'branch', 'tags', 'date', 'author', 'message'] ) )
+    Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( [
+        '#',
+        'commit',
+        'lines',
+        'tags',
+        'date',
+        'author',
+        'branch',
+        'message'
+        ] ) )
     Globals.ui_commitList.setColumnCount( 8 )
     Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     Globals.ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
@@ -358,7 +367,16 @@ def main():
         readableBranch = commit.getBranchOneliner()
         readableTags = commit.getTagsOneliner()
         readableMessage = commit.getMessageOneliner()
-        item = QtWidgets.QTreeWidgetItem( [str(commit.index), commit.commitHash, readableLines, readableBranch, readableTags, commit.getDateString(), commit.author, readableMessage] )
+        item = QtWidgets.QTreeWidgetItem( [
+            str(commit.index),
+            commit.commitHash,
+            readableLines,
+            readableTags,
+            commit.getDateString(),
+            commit.author,
+            readableBranch,
+            readableMessage
+            ] )
         Globals.ui_commitListItemHash[commit.commitHash] = item
         item.setFont( CommitList.commitListItemColumn_commit, courierFont )
         item.setFont( CommitList.commitListItemColumn_author, boldFont )
