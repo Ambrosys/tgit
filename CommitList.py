@@ -105,7 +105,7 @@ def on_commitList_currentItemChanged( current, before ):
 
     # restore backgrounds
     for (item, brush) in Globals.previousBackgroundList:
-        #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
+        #for col in [commitListItemColumn_commit]: # range( item.columnCount() ):
         #    item.setBackground( col, brush )
         item.setIcon( 0, Globals.transparentIcon )
 
@@ -164,11 +164,11 @@ def on_commitList_currentItemChanged( current, before ):
         for c in family:
             item = Globals.ui_commitListItemHash[c.commitHash]
             Globals.previousBackgroundList.append( (item, item.background(0)) )
-            #for col in [commitListItemColumn_commit]: # range( 0, item.columnCount() ):
+            #for col in [commitListItemColumn_commit]: # range( item.columnCount() ):
             #    item.setBackground( col, QtGui.QBrush( QtGui.QColor( 230, 108, 30, 32 ) ) )
             item.setIcon( 0, QtGui.QIcon( pixmap ) )
 
-        if Globals.ui_diffViewerCheckBox.isChecked():
+        if Globals.ui_diffViewerCheckBox.isChecked() and not Globals.temporarilyNoDiffViewer:
             cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
             if Globals.includeDirectories or Globals.includeFiles:
                 cmd.extend( Globals.includeDirectories )
@@ -193,7 +193,7 @@ def on_commitList_customContextMenuRequested( pos ):
 @QtCore.pyqtSlot()
 def slot_updateCommitListInfo():
     visibleItemsCount = 0
-    for i in range( 0, Globals.ui_commitList.topLevelItemCount() ):
+    for i in range( Globals.ui_commitList.topLevelItemCount() ):
         item = Globals.ui_commitList.topLevelItem( i )
         if not item.isHidden():
             visibleItemsCount += 1

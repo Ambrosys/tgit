@@ -393,9 +393,9 @@ def main():
         item.setTextAlignment( CommitList.commitListItemColumn_index, QtCore.Qt.AlignRight )
         item.setTextAlignment( CommitList.commitListItemColumn_lines, QtCore.Qt.AlignRight )
         if not Filter.somePassesPathFilter( commit.getFilenames(), False ):
-            for i in range( 0, item.columnCount() ):
+            for i in range( item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
-        for col in range( 0, item.columnCount() ):
+        for col in range( item.columnCount() ):
             item.setBackground( col, QtGui.QBrush( map_author_color[commit.author] ) )
         item.setIcon( 0, Globals.transparentIcon )
         Globals.ui_commitList.addTopLevelItem( item )
@@ -574,7 +574,7 @@ def main():
     # note: setHidden() has to be called after window has been shown, that's why this code is here at the bottom
     Filter.doFiltering()
 
-    for i in range( 0, Globals.ui_commitList.topLevelItemCount() ):
+    for i in range( Globals.ui_commitList.topLevelItemCount() ):
         item = Globals.ui_commitList.topLevelItem( i )
         if not item.isHidden():
             Globals.ui_commitList.setCurrentItem( item )

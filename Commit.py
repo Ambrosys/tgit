@@ -102,14 +102,18 @@ class Commit:
     def getOneliner( self ):
         return '%i: %s: %s' % (self.index, self.commitHash, self.getMessageOneliner())
 
-    def getShortOnelinerHtml( self, withLink ):
+    def getShortOnelinerHtml( self, withLink, filename = '' ):
         if withLink:
-            return '<a href="%s">%i: <code>%s</code></a>' % (self.commitHash, self.index, self.commitHash)
+            link = self.commitHash
+            if filename:
+                link += '-' + filename
+            return '<a href="%s">%i: <code>%s</code></a>' % (link, self.index, self.commitHash)
         else:
+            assert not filename
             return '%i: <code>%s</code>' % (self.index, self.commitHash)
 
-    def getOnelinerHtml( self, withLink ):
-        return '%s: %s' % (self.getShortOnelinerHtml( withLink ), self.getMessageOneliner())
+    def getOnelinerHtml( self, withLink, filename = '' ):
+        return '%s: %s' % (self.getShortOnelinerHtml( withLink, filename ), self.getMessageOneliner())
 
     def getMultilinerHtml( self ):
         if '\n' in self.message:
@@ -123,8 +127,8 @@ class Commit:
             m2 = '<br />%s' % m2
         return '%i: <strong><code>%s</code>: </strong><span style="color:#e66c1e;"><strong>%s</strong>%s</span>' % (self.index, self.commitHash, m1, m2)
 
-    def getOnelinerWithDateHtml( self, withLink ):
-        return '%s: %s' % (self.getDateString(), self.getOnelinerHtml( withLink ))
+    def getOnelinerWithDateHtml( self, withLink, filename = '' ):
+        return '%s: %s' % (self.getDateString(), self.getOnelinerHtml( withLink, filename ))
 
     def getMessageOneliner( self ):
         return self.message.strip().replace( '\n', ' ' )

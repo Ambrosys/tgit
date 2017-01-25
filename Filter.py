@@ -149,7 +149,7 @@ def doFiltering():
                             foundCommitHashes.add( c.commitHash )
                             break
 
-    for i in range( 0, Globals.ui_commitList.topLevelItemCount() ):
+    for i in range( Globals.ui_commitList.topLevelItemCount() ):
         item = Globals.ui_commitList.topLevelItem( i )
         commit = Globals.allCommitsHash[item.text( CommitList.commitListItemColumn_commit )]
         shouldBeVisible = True

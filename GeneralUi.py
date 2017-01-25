@@ -2,6 +2,7 @@
 import Globals
 import Filter
 import CreateUi
+import FileList
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 
@@ -27,7 +28,7 @@ def on_commitLinkActivated( link ):
 
         hashes = commit.getHistory( filename )
         htmls = ['<strong>history:</strong> (<a href="forward-search:%s">forward-search</a>)<br />' % hash]
-        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
+        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True, filename ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
         label.setText( ''.join( htmls ) )
 
         layout.addWidget( container )
@@ -37,11 +38,30 @@ def on_commitLinkActivated( link ):
         window.show()
         return
 
+    if '-' in link:
+        (commitHash, filename) = link.split( '-', 1 )
+    else:
+        (commitHash, filename) = (link, '')
+
     for item in Globals.ui_commitList.selectedItems():
         item.setSelected( False )
-    item = Globals.ui_commitListItemHash[link]
+    item = Globals.ui_commitListItemHash[commitHash]
+
+    if filename:
+        Globals.temporarilyNoDiffViewer = True
     item.setSelected( True )
     Globals.ui_commitList.setCurrentItem( item )
+    if filename:
+        Globals.temporarilyNoDiffViewer = False
+
+    if filename:
+        for i in range( Globals.ui_filesList.topLevelItemCount() ):
+            item = Globals.ui_filesList.topLevelItem( i )
+            if item.text( FileList.filesListItemColumn_filename ) == filename:
+                item.setSelected( True )
+                Globals.ui_filesList.setCurrentItem( item )
+                break
+
 
 @QtCore.pyqtSlot( str )
 def labelLinkActivated( label, link ):
@@ -57,9 +77,9 @@ def labelLinkActivated( label, link ):
             hashes = commit.getHistory( filename )
             htmls = []
             htmls.extend( ['<a href="forward-search:%s:%s">forward-search (slow)</a>' % (hash, filename)] )
-            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
+            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True, filename )] )
             htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
-            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
+            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True, filename ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
             newLabel.setText( ''.join( htmls ) )
 
             layout.addWidget( container )
@@ -91,16 +111,16 @@ def labelLinkActivated( label, link ):
             if commits:
                 def getLine( c ):
                     if filename in c.getFilenames():
-                        return '%s' % c.getOnelinerWithDateHtml( True )
+                        return '%s' % c.getOnelinerWithDateHtml( True, filename )
                     else:
-                        return '<span style="color: #aaa;">%s</span>' % c.getOnelinerWithDateHtml( True )
+                        return '<span style="color: #aaa;">%s</span>' % c.getOnelinerWithDateHtml( True, filename )
                 htmls.extend( '<br />'.join( map( lambda c: getLine( c ), commits ) ) )
             else:
                 htmls.extend( '(none)' )
-            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True )] )
+            htmls.extend( ['<br /><span style="color:#e66c1e;">%s</span>' % commit.getOnelinerWithDateHtml( True, filename )] )
             htmls.extend( ['<br /><strong>history</strong> of %s:<br />' % filename] )
             hashes = commit.getHistory( filename )
-            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
+            htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerWithDateHtml( True, filename ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
             label.setText( ''.join( htmls ) )
         else:
             print( 'Error: handler for command "%s" not implemented' % command )

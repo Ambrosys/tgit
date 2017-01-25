@@ -56,5 +56,5 @@ def on_filesList_currentItemChanged( current, before ):
         filename = current.text(filesListItemColumn_filename)
         hashes = Globals.selectedCommit.getHistory( filename )
         htmls = ['<strong>history:</strong> (<a href="history:%s:%s">new window</a>)<br />' % (Globals.selectedCommit.commitHash, filename)]
-        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
+        htmls.extend( '<br />'.join( map( lambda c: c.getOnelinerHtml( True, filename ), map( lambda h: Globals.allCommitsHash[h], hashes ) ) ) )
         Globals.ui_followViewer.setText( ''.join( htmls ) )
