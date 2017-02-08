@@ -156,6 +156,7 @@ def main():
         allTagsPerCommitHash = collections.OrderedDict()
 
     ui_app = QtWidgets.QApplication( [] )
+    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
 
     normalFont = QtGui.QFont()
     normalFont.setPointSize( Globals.normalPointSize )
