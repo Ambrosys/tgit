@@ -4,10 +4,10 @@ This is a simple git GUI for tagging commits.
 
 ## Installation
 
-You need python3 with pyqt5:
+You need python3 with pyqt5 (for the GUI) and skimage (for color calculations):
 
 ```bash
-sudo apt install python3-pyqt5
+sudo apt install python3-pyqt5 python3-skimage
 ```
 
 For the git-diff rendering the
@@ -110,15 +110,19 @@ Example:
 
 This file defines author groups and author mappings (to simplify the UI).
 
+You can assign a color to a name by adding the color code to the name
+(readable for PyQt5.QtGui.QColor).
+Authors with no color assoziation will get one from the integrated color palette.
+
 Example:
 ```json
 {
   "core": {
-    "fs": ["Fabian Sandoval", "FabianSandoval"],
-    "jd": ["John Doe"]
+    "Fabian #008000": ["Fabian Sandoval", "FabianSandoval"],
+    "John": ["John Doe"]
   },
   "other": {
-    "mm": ["Max Mustermann"]
+    "Max": ["Max Mustermann"]
   }
 }
 ```
@@ -159,4 +163,26 @@ Example:
     ":exclude-pattern"
   ]
 }
+```
+
+## Helper utilities
+
+### show-tgit-colors
+
+Lists all colors defined in an authors file (if given)
+and the colors of the integrated color palette
+and how they will be rendered in the commits view.
+
+```bash
+show-tgit-colors -h
+```
+
+```
+usage: show-tgit-colors [-h] [--authors FILENAME]
+
+Color test utility for tgit.
+
+optional arguments:
+  -h, --help          show this help message and exit
+  --authors FILENAME  authors config file, default: tgit-authors.json
 ```

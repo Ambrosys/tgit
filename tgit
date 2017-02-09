@@ -8,6 +8,8 @@ import FileList
 import CreateUi
 import GeneralUi
 import Commit
+import Colors
+import Authors
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import json
@@ -135,20 +137,7 @@ def main():
     for group, tags in Globals.allTagsGrouped.items():
         Globals.allTags.extend( tags )
 
-    if os.path.isfile( filepath_authorsJson ):
-        allAuthorsHashGrouped = json.load( open( filepath_authorsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
-    else:
-        allAuthorsHashGrouped = {}
-    allAuthorsGrouped = collections.OrderedDict()
-    allAuthorsHash = {}
-    allAuthorsHash_author_group = {}
-    for group, authorsHash in allAuthorsHashGrouped.items():
-        allAuthorsGrouped[group] = set()
-        for author, originalAuthors in authorsHash.items():
-            allAuthorsGrouped[group].add( author )
-            allAuthorsHash_author_group[author] = group
-            for originalAuthor in originalAuthors:
-                allAuthorsHash[originalAuthor] = author
+    Authors.load( filepath_authorsJson )
 
     if os.path.isfile( filepath_commitsJson ):
         allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
@@ -184,17 +173,17 @@ def main():
         if log:
             (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
 
-            if originalAuthor in allAuthorsHash:
-                author = allAuthorsHash[originalAuthor]
+            if originalAuthor in Authors.allAuthorsHash:
+                author = Authors.allAuthorsHash[originalAuthor]
             else:
                 author = originalAuthor
                 missingAuthors.add( originalAuthor )
-            if author in allAuthorsHash_author_group:
-                group = allAuthorsHash_author_group[author]
+            if author in Authors.allAuthorsHash_author_group:
+                group = Authors.allAuthorsHash_author_group[author]
             else:
                 group = author[0].upper()
-            if group in allAuthorsGrouped:
-                allAuthorsGrouped[group].add( author )
+            if group in Authors.allAuthorsGrouped:
+                Authors.allAuthorsGrouped[group].add( author )
             else:
                 if not group in newGroups:
                     newGroups[group] = set()
@@ -215,9 +204,9 @@ def main():
         for author in sorted( list( missingAuthors ) ):
             print( 'Warning: author "%s" missing in %s' % (author, filepath_authorsJson) )
     for newGroup in sorted( newGroups.keys() ):
-        allAuthorsGrouped[newGroup] = newGroups[newGroup]
-    for group in allAuthorsGrouped:
-        allAuthorsGrouped[group] = sorted( list( allAuthorsGrouped[group] ) )
+        Authors.allAuthorsGrouped[newGroup] = newGroups[newGroup]
+    for group in Authors.allAuthorsGrouped:
+        Authors.allAuthorsGrouped[group] = sorted( list( Authors.allAuthorsGrouped[group] ) )
 
     # reading commits (2/3)...
 
@@ -305,35 +294,9 @@ def main():
                         setBranchName( parents[1], m.group(1) )
                         break
 
+    # define colors for authors
 
-    # define colors
-
-    map_color = {}
-    map_color[1] = "#2c3e50"           # HOST
-    map_color[2] = "#c0392b"           # SYNTAX_STRING
-    map_color[3] = "#27ae60"           # COMMAND
-    map_color[4] = "#f39c12"           # COMMAND_COLOR2
-    map_color[5] = "#2980b9"           # PATH
-    map_color[6] = "#8e44ad"           # SYNTAX_VAR
-    map_color[7] = "#16a085"           # PROMP
-    map_color[8] = "#bdc3c7"           #
-    map_color[9] = "#34495e"           #
-    map_color[10] = "#e74c3c"           # COMMAND_ERROR
-    map_color[11] = "#2ecc71"           # EXEC
-    map_color[12] = "#f1c40f"           #
-    map_color[13] = "#3498db"           # FOLDER
-    map_color[14] = "#9b59b6"           #
-    map_color[15] = "#2AA198"           #
-    map_color[16] = "#ecf0f1"           #
-
-    map_author_color = {}
-    i = 0
-    for group, authors in allAuthorsGrouped.items():
-        for author in authors:
-            color = QtGui.QColor( map_color[i % len( map_color ) + 1] )
-            color.setAlpha( 32 )
-            map_author_color[author] = color
-            i += 1
+    Authors.updateColors()
 
     # load cache
 
@@ -397,7 +360,7 @@ def main():
             for i in range( item.columnCount() ):
                 item.setForeground( i, QtGui.QBrush( QtCore.Qt.lightGray ) )
         for col in range( item.columnCount() ):
-            item.setBackground( col, QtGui.QBrush( map_author_color[commit.author] ) )
+            item.setBackground( col, QtGui.QBrush( Authors.map_author_color[commit.author] ) )
         item.setIcon( 0, Globals.transparentIcon )
         Globals.ui_commitList.addTopLevelItem( item )
 
@@ -447,7 +410,7 @@ def main():
     ui_filterIncludeSpecialAreaLineWidget = QtWidgets.QWidget()
     ui_filterIncludeSpecialAreaLineWidget.setLayout( ui_filterIncludeSpecialAreaLineLayout )
 
-    ui_filterTabWidget = CreateUi.createFilterTabWidget( Globals.allTagsGrouped, undefinedTags, allAuthorsGrouped )
+    ui_filterTabWidget = CreateUi.createFilterTabWidget( Globals.allTagsGrouped, undefinedTags, Authors.allAuthorsGrouped )
 
     Globals.ui_searchFilterLineEdit = QtWidgets.QLineEdit()
     Globals.ui_searchFilterLineEdit.setClearButtonEnabled( True )
