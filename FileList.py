@@ -10,9 +10,12 @@ import ansi2html
 from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
+import hashlib
 
-filesListItemColumn_lines = 0
-filesListItemColumn_filename = 1
+filesListItemColumn_diff = 0
+filesListItemColumn_lines = 1
+filesListItemColumn_filename = 2
+filesListItemColumnCount = 3
 
 def diff_nonblocking( commit, file ):
     file1content = Utils.call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=Globals.repositoryDir )
@@ -38,6 +41,21 @@ def on_filesList_itemSelectionChanged():
         html = conv.convert( ansi )
         #html = '\n'.join( Utils.call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
         Globals.ui_diffViewer.setHtml( html )
+
+        if Globals.calculateDiffHashes and len( items ) == 1:
+            cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--']
+            cmd.extend( files )
+            diff = Utils.call( cmd, cwd=Globals.repositoryDir )
+            # replace patterns like "index 5504aae..f60cf6b 100755" or
+            # "index 5504aae..f60cf6b" with "index 0000000..0000000 100755"
+            # or "index 0000000..0000000" respectively
+            regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
+            diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
+
+            m = hashlib.sha1()
+            m.update( '\n'.join( diff ).encode('utf-8') )
+            item = items[0]
+            item.setText( filesListItemColumn_diff, m.digest().hex()[:7] )
 
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
 def on_filesList_itemActivated( item ):

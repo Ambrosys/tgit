@@ -10,15 +10,19 @@ site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
 import ansi2html
 
 from PyQt5 import QtWidgets, QtGui, QtCore
+import hashlib
+import re
 
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1
-commitListItemColumn_lines = 2
-commitListItemColumn_tags = 3
-commitListItemColumn_date = 4
-commitListItemColumn_author = 5
-commitListItemColumn_branch = 6
-commitListItemColumn_message = 7
+commitListItemColumn_diff = 2
+commitListItemColumn_lines = 3
+commitListItemColumn_tags = 4
+commitListItemColumn_date = 5
+commitListItemColumn_author = 6
+commitListItemColumn_branch = 7
+commitListItemColumn_message = 8
+commitListItemColumnCount = 9
 
 def showContextMenu( item, globalPos ):
     """
@@ -100,9 +104,6 @@ def on_commitList_currentItemChanged( current, before ):
     pixmap = QtGui.QPixmap( 64, 64 )
     pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
 
-    smallFont = QtGui.QFont()
-    smallFont.setPointSize( Globals.smallPointSize )
-
     # restore backgrounds
     for (item, brush) in Globals.previousBackgroundList:
         #for col in [commitListItemColumn_commit]: # range( item.columnCount() ):
@@ -129,9 +130,11 @@ def on_commitList_currentItemChanged( current, before ):
         for file in Globals.selectedCommit.files:
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
-            item = QtWidgets.QTreeWidgetItem( [readableLines, name] )
-            for i in range( 8 ):
-                item.setFont( i, smallFont )
+            item = QtWidgets.QTreeWidgetItem( ['', readableLines, name] )
+            for i in range( FileList.filesListItemColumnCount ):
+                item.setFont( i, Globals.smallFont )
+            item.setFont( FileList.filesListItemColumn_diff, Globals.courierFont )
+            item.setTextAlignment( FileList.filesListItemColumn_lines, QtCore.Qt.AlignRight )
             if Filter.passesPathFilter( name ):
                 colors = {
                     'M': item.foreground(0),
@@ -170,17 +173,34 @@ def on_commitList_currentItemChanged( current, before ):
 
         if Globals.ui_diffViewerCheckBox.isChecked() and not Globals.temporarilyNoDiffViewer:
             cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
+            files = []
             if Globals.includeDirectories or Globals.includeFiles:
-                cmd.extend( Globals.includeDirectories )
-                cmd.extend( Globals.includeFiles )
+                files.extend( Globals.includeDirectories )
+                files.extend( Globals.includeFiles )
             else:
-                cmd.append( '.' )
+                files.append( '.' )
+            cmd.extend( files )
             diff = Utils.call( cmd, cwd=Globals.repositoryDir )
             conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
             ansi = '\n'.join( diff )
             html = conv.convert( ansi )
             #html = '\n'.join( Utils.call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
             Globals.ui_diffViewer.setHtml( html )
+
+            if Globals.calculateDiffHashes:
+                cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--']
+                cmd.extend( files )
+                diff = Utils.call( cmd, cwd=Globals.repositoryDir )
+                # replace patterns like "index 5504aae..f60cf6b 100755" or
+                # "index 5504aae..f60cf6b" with "index 0000000..0000000 100755"
+                # or "index 0000000..0000000" respectively
+                regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
+                diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
+
+                m = hashlib.sha1()
+                m.update( '\n'.join( diff[4:] ).encode('utf-8') ) # omit first 4 lines of diff output
+                item = Globals.ui_commitListItemHash[Globals.selectedCommit.commitHash]
+                item.setText( commitListItemColumn_diff, m.digest().hex()[:7] )
         else:
             Globals.ui_diffViewer.setHtml( '<html><body style="background: black;"></body></html>' )
 

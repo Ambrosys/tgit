@@ -11,6 +11,7 @@ excludePatterns = [] # note: not used for git commands
 transparentIcon = None
 
 readOnlyMode = False
+calculateDiffHashes = False
 
 normalPointSize = 9
 smallPointSize = 8
@@ -47,3 +48,25 @@ allCommitsHash = {}
 allTags = []
 allTagsGrouped = {}
 previousBackgroundList = []
+
+normalFont = None
+smallFont = None
+courierFont = None
+boldFont = None
+def initUiGlobals():
+    """
+    Call this after QtWidgets.QApplication() was constructed.
+    """
+    global normalFont
+    global smallFont
+    global courierFont
+    global boldFont
+    normalFont = QtGui.QFont()
+    normalFont.setPointSize( normalPointSize )
+    smallFont = QtGui.QFont()
+    smallFont.setPointSize( smallPointSize )
+    courierFont = QtGui.QFont( 'Courier New' )
+    courierFont.setPointSize( smallPointSize )
+    boldFont = QtGui.QFont()
+    boldFont.setPointSize( smallPointSize )
+    boldFont.setBold( True )

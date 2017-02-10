@@ -80,6 +80,7 @@ def main():
     parser.add_argument( '--no-diff', action='store_true', help = 'deactivate "automatically diff all files"' )
     parser.add_argument( '--no-cache', action='store_true', help = 'do not save cache file' )
     parser.add_argument( '-r', '--read-only', action='store_true', help = 'read-only mode' )
+    parser.add_argument( '-d', '--diff-hash', action='store_true', help = 'calculate diff hashes in views' )
     args = parser.parse_args()
 
     if args.no_numstat and args.full_numstat:
@@ -95,6 +96,7 @@ def main():
         exit( 1 )
 
     Globals.readOnlyMode = args.read_only
+    Globals.calculateDiffHashes = args.diff_hash
 
     configDir = args.config_dir
     filepath_tagsJson = os.path.join( configDir, args.tags )
@@ -147,17 +149,9 @@ def main():
     ui_app = QtWidgets.QApplication( [] )
     ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
 
-    normalFont = QtGui.QFont()
-    normalFont.setPointSize( Globals.normalPointSize )
-    smallFont = QtGui.QFont()
-    smallFont.setPointSize( Globals.smallPointSize )
-    courierFont = QtGui.QFont( 'Courier New' )
-    courierFont.setPointSize( Globals.smallPointSize )
-    boldFont = QtGui.QFont()
-    boldFont.setPointSize( Globals.smallPointSize )
-    boldFont.setBold( True )
+    Globals.initUiGlobals()
 
-    QtWidgets.QApplication.setFont( normalFont )
+    QtWidgets.QApplication.setFont( Globals.normalFont )
 
     # reading commits (1/3)...
 
@@ -319,6 +313,7 @@ def main():
     Globals.ui_commitList.setHeaderItem( QtWidgets.QTreeWidgetItem( [
         '#',
         'commit',
+        'diff',
         'lines',
         'tags',
         'date',
@@ -326,7 +321,8 @@ def main():
         'branch',
         'message'
         ] ) )
-    Globals.ui_commitList.setColumnCount( 8 )
+    Globals.ui_commitList.setColumnCount( CommitList.commitListItemColumnCount )
+    Globals.ui_commitList.setColumnHidden( CommitList.commitListItemColumn_diff, not Globals.calculateDiffHashes )
     Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     Globals.ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     Globals.ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
@@ -342,6 +338,7 @@ def main():
         item = QtWidgets.QTreeWidgetItem( [
             str(commit.index),
             commit.commitHash,
+            '',
             readableLines,
             readableTags,
             commit.getDateString(),
@@ -350,10 +347,11 @@ def main():
             readableMessage
             ] )
         Globals.ui_commitListItemHash[commit.commitHash] = item
-        for i in range( 8 ):
-            item.setFont( i, smallFont )
-        item.setFont( CommitList.commitListItemColumn_commit, courierFont )
-        item.setFont( CommitList.commitListItemColumn_author, boldFont )
+        for i in range( CommitList.commitListItemColumnCount ):
+            item.setFont( i, Globals.smallFont )
+        item.setFont( CommitList.commitListItemColumn_commit, Globals.courierFont )
+        item.setFont( CommitList.commitListItemColumn_diff, Globals.courierFont )
+        item.setFont( CommitList.commitListItemColumn_author, Globals.boldFont )
         item.setTextAlignment( CommitList.commitListItemColumn_index, QtCore.Qt.AlignRight )
         item.setTextAlignment( CommitList.commitListItemColumn_lines, QtCore.Qt.AlignRight )
         if not Filter.somePassesPathFilter( commit.getFilenames(), False ):
@@ -486,8 +484,9 @@ def main():
 
     Globals.ui_filesList = QtWidgets.QTreeWidget()
     Globals.ui_filesList.setRootIsDecorated( False )
-    Globals.ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['lines', 'file'] ) )
-    Globals.ui_filesList.setColumnCount( 2 )
+    Globals.ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['diff', 'lines', 'file'] ) )
+    Globals.ui_filesList.setColumnCount( FileList.filesListItemColumnCount )
+    Globals.ui_filesList.setColumnHidden( FileList.filesListItemColumn_diff, not Globals.calculateDiffHashes )
     Globals.ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     Globals.ui_filesList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
     Globals.ui_filesList.itemSelectionChanged.connect( FileList.on_filesList_itemSelectionChanged )
