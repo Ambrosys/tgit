@@ -1,4 +1,3 @@
-
 import subprocess
 
 def call( cmd, cwd=None, input=None ):

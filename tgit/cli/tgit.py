@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-
-import Globals
-import Utils
-import Filter
-import CommitList
-import FileList
-import CreateUi
-import GeneralUi
-import Commit
-import Colors
-import Authors
-
 from PyQt5 import QtWidgets, QtGui, QtCore
 import json
 import collections
@@ -18,6 +5,18 @@ import re
 import argparse
 import os
 import datetime
+
+from .. import Globals
+from .. import Utils
+from .. import Filter
+from .. import CommitList
+from .. import FileList
+from .. import CreateUi
+from .. import GeneralUi
+from .. import Commit
+from .. import Colors
+from .. import Authors
+
 
 @QtCore.pyqtSlot()
 def on_tagCheckBox_clicked():
@@ -147,7 +146,7 @@ def main():
         allTagsPerCommitHash = collections.OrderedDict()
 
     ui_app = QtWidgets.QApplication( [] )
-    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
+    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), '../../img/tgit-logo.svg' ) ) )
 
     Globals.initUiGlobals()
 
@@ -570,6 +569,3 @@ def main():
                 cache['history'][commit.commitHash] = commit.hash_filename_history
         if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
             json.dump( cache, open( filepath_cacheJson, 'w' ), indent=2 )
-
-if __name__ == '__main__':
-    main()

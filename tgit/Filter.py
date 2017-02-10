@@ -1,9 +1,10 @@
-
-import Globals
-import CommitList
+import re
 
 from PyQt5 import QtWidgets, QtGui, QtCore
-import re
+
+from . import Globals
+from . import CommitList
+
 
 def passesPathFilter( filename ):
     if not Globals.includeDirectories and not Globals.includeFiles:

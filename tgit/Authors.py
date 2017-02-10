@@ -1,16 +1,17 @@
-
-import Colors
-
-from PyQt5 import QtGui
 import os
 import json
 import collections
+
+from PyQt5 import QtGui
+
+from . import Colors
 
 allAuthorsGrouped = collections.OrderedDict()
 allAuthorsHash = {}
 allAuthorsHash_author_group = {}
 map_author_color = {} # does not need to be complete until call of updateColors()
 map_author_originalColor = {} # does not need to be complete
+
 
 def load( filepath ):
     global allAuthorsGrouped
@@ -40,11 +41,11 @@ def load( filepath ):
             for originalAuthor in originalAuthors:
                 allAuthorsHash[originalAuthor] = author
 
+
 def updateColors():
     """
     set colors for authors without color definition
     """
-
     i = 0
     for group, authors in allAuthorsGrouped.items():
         for author in authors:

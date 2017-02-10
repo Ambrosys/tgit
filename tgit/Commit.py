@@ -1,7 +1,8 @@
-
-import Globals
-import Utils
 import datetime
+
+from . import Globals
+from . import Utils
+
 
 class CommitFile:
     def __init__( self, name ):

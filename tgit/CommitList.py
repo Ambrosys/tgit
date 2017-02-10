@@ -1,17 +1,17 @@
-
-import Globals
-import Utils
-import Filter
-import FileList
-
 import site
 import os
-site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
-import ansi2html
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import hashlib
 import re
+
+import ansi2html
+from PyQt5 import QtWidgets, QtGui, QtCore
+
+
+from . import Globals
+from . import Utils
+from . import Filter
+from . import FileList
+
 
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1

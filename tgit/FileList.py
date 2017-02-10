@@ -1,16 +1,13 @@
-
-import Globals
-import Utils
-
-import site
-import os
-site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
-import ansi2html
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
 import hashlib
+import site
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+import ansi2html
+
+from . import Globals
+from . import Utils
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1
