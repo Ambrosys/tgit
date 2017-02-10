@@ -159,18 +159,18 @@ Example:
 
 ## Helper utilities
 
-### show-tgit-colors
+### tgit-show-colors
 
 Lists all colors defined in an authors file (if given)
 and the colors of the integrated color palette
 and how they will be rendered in the commits view.
 
 ```bash
-show-tgit-colors -h
+tgit-show-colors -h
 ```
 
 ```
-usage: show-tgit-colors [-h] [--authors FILENAME]
+usage: tgit-show-colors [-h] [--authors FILENAME]
 
 Color test utility for tgit.
 
