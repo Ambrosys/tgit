@@ -21,4 +21,4 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
         outputStrings = map( lambda s: s.decode('utf-8'), outputList )
     except UnicodeDecodeError:
         outputStrings = map( lambda s: str( s ), outputList )
-    return outputStrings
+    return list( outputStrings )

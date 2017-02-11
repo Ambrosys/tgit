@@ -11,6 +11,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
 import hashlib
+import re
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1
@@ -32,7 +33,7 @@ def diff_nonblocking( commit, file ):
 def on_filesList_itemSelectionChanged():
     items = Globals.ui_filesList.selectedItems()
     if items:
-        files = map( lambda item: item.text( filesListItemColumn_filename ), items )
+        files = list( map( lambda item: item.text( filesListItemColumn_filename ), items ) )
         cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
         cmd.extend( files )
         diff = Utils.call( cmd, cwd=Globals.repositoryDir )
@@ -51,6 +52,9 @@ def on_filesList_itemSelectionChanged():
             # or "index 0000000..0000000" respectively
             regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
             diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
+            if Globals.calculateDiffHashesSpaceTolerant:
+                # remove blank lines and white space at EOL
+                diff[:] = [line.rstrip() for line in diff if line.strip()]
 
             m = hashlib.sha1()
             m.update( '\n'.join( diff ).encode('utf-8') )

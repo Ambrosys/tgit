@@ -79,7 +79,7 @@ class Commit:
         self._recalculateOverallNumstat()
 
     def getFilenames( self ):
-        return map( lambda file: file.name, self.files )
+        return list( map( lambda file: file.name, self.files ) )
 
     def getChildrenUnsorted( self ):
         if self._children is None:
@@ -94,7 +94,7 @@ class Commit:
 
     def getParentsUnsorted( self, commitsHash ):
         parents = map( lambda h: commitsHash[h], self.parents )
-        return parents
+        return list( parents )
 
     def getParents( self, commitsHash ):
         return sorted( self.getParentsUnsorted( commitsHash ), key=lambda c: c.index, reverse=True )

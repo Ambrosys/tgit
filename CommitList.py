@@ -196,9 +196,12 @@ def on_commitList_currentItemChanged( current, before ):
                 # or "index 0000000..0000000" respectively
                 regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
                 diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
+                if Globals.calculateDiffHashesSpaceTolerant:
+                    # remove blank lines and white space at EOL
+                    diff[:] = [line.rstrip() for line in diff if line.strip()]
 
                 m = hashlib.sha1()
-                m.update( '\n'.join( diff[4:] ).encode('utf-8') ) # omit first 4 lines of diff output
+                m.update( '\n'.join( diff ).encode('utf-8') )
                 item = Globals.ui_commitListItemHash[Globals.selectedCommit.commitHash]
                 item.setText( commitListItemColumn_diff, m.digest().hex()[:7] )
         else:
