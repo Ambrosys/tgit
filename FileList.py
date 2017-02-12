@@ -1,17 +1,11 @@
 
 import Globals
 import Utils
-
-import site
-import os
-site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
-import ansi2html
+import GitUtils
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
-import hashlib
-import re
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1
@@ -34,32 +28,13 @@ def on_filesList_itemSelectionChanged():
     items = Globals.ui_filesList.selectedItems()
     if items:
         files = list( map( lambda item: item.text( filesListItemColumn_filename ), items ) )
-        cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
-        cmd.extend( files )
-        diff = Utils.call( cmd, cwd=Globals.repositoryDir )
-        conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
-        ansi = '\n'.join( diff )
-        html = conv.convert( ansi )
-        #html = '\n'.join( Utils.call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-        Globals.ui_diffViewer.setHtml( html )
+        Globals.ui_diffViewer.setHtml( GitUtils.getDiffHtml( Globals.selectedCommit.commitHash, files ) )
 
         if Globals.calculateDiffHashes and len( items ) == 1:
-            cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--']
-            cmd.extend( files )
-            diff = Utils.call( cmd, cwd=Globals.repositoryDir )
-            # replace patterns like "index 5504aae..f60cf6b 100755" or
-            # "index 5504aae..f60cf6b" with "index 0000000..0000000 100755"
-            # or "index 0000000..0000000" respectively
-            regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
-            diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
-            if Globals.calculateDiffHashesSpaceTolerant:
-                # remove blank lines and white space at EOL
-                diff[:] = [line.rstrip() for line in diff if line.strip()]
-
-            m = hashlib.sha1()
-            m.update( '\n'.join( diff ).encode('utf-8') )
             item = items[0]
-            item.setText( filesListItemColumn_diff, m.digest().hex()[:7] )
+            if not item.text( filesListItemColumn_diff ):
+                diffHash = GitUtils.getDiffHash( Globals.selectedCommit.commitHash, files, forceGeneration=True )
+                item.setText( filesListItemColumn_diff, diffHash )
 
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
 def on_filesList_itemActivated( item ):

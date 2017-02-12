@@ -2,6 +2,7 @@
 import Globals
 import Utils
 import datetime
+import collections
 
 class CommitFile:
     def __init__( self, name ):
@@ -48,7 +49,6 @@ class Commit:
         self.added = 0
         self.removed = 0
         self.tags = []
-        self.hash_filename_history = {}
         self._children = None
         self._branch = None
         self._recognizedMerges = None # a and b into c would be [a, b, c]
@@ -163,7 +163,9 @@ class Commit:
         return self.date.strftime( '%Y-%m-%d %H:%M:%S' )
 
     def getHistory( self, filename ):
-        if not filename in self.hash_filename_history:
+        if not self.commitHash in Globals.hash_commit_filename_history:
+            Globals.hash_commit_filename_history[self.commitHash] = collections.OrderedDict()
+        if not filename in Globals.hash_commit_filename_history[self.commitHash]:
             history = Utils.call( ['git', 'log', '--format=%h', '--follow', self.commitHash, '--', filename], cwd=Globals.repositoryDir )
-            self.hash_filename_history[filename] = history[1:] # dismiss self
-        return self.hash_filename_history[filename]
+            Globals.hash_commit_filename_history[self.commitHash][filename] = history[1:] # dismiss self
+        return Globals.hash_commit_filename_history[self.commitHash][filename]

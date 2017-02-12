@@ -6,6 +6,7 @@ branch = None
 
 includeDirectories = []
 includeFiles = []
+includePaths = [] # used for git commands, contains '.' or dirs and files
 excludePatterns = [] # note: not used for git commands
 
 transparentIcon = None
@@ -45,6 +46,9 @@ ui_diffViewerCheckBox = None
 selectedCommit = None
 allCommits = []
 allCommitsHash = {}
+hash_commit_filename_history = {}
+hash_commit_filenames_diffHash = {}
+hash_commit_filenames_spaceTolerantDiffHash = {}
 allTags = []
 allTagsGrouped = {}
 previousBackgroundList = []

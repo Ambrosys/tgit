@@ -8,8 +8,8 @@ import FileList
 import CreateUi
 import GeneralUi
 import Commit
-import Colors
 import Authors
+import GitUtils
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 import json
@@ -100,6 +100,14 @@ def main():
         print( 'Error: %s is not a directory.' % args.config_dir )
         exit( 1 )
 
+
+    ui_app = QtWidgets.QApplication( [] )
+    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
+
+    Globals.initUiGlobals()
+    QtWidgets.QApplication.setFont( Globals.normalFont )
+
+
     Globals.readOnlyMode = args.read_only
     Globals.calculateDiffHashes = args.diff_hash
     Globals.calculateDiffHashesSpaceTolerant = args.space_tolerant
@@ -138,6 +146,12 @@ def main():
             print( 'Error: %s is not a valid path.' % path )
             exit( 1 )
 
+    if Globals.includeDirectories or Globals.includeFiles:
+        Globals.includePaths.extend( Globals.includeDirectories )
+        Globals.includePaths.extend( Globals.includeFiles )
+    else:
+        Globals.includePaths.append( '.' )
+
     if os.path.isfile( filepath_tagsJson ):
         Globals.allTagsGrouped = json.load( open( filepath_tagsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
@@ -151,13 +165,6 @@ def main():
         allTagsPerCommitHash = json.load( open( filepath_commitsJson, 'r' ), object_pairs_hook=collections.OrderedDict )
     else:
         allTagsPerCommitHash = collections.OrderedDict()
-
-    ui_app = QtWidgets.QApplication( [] )
-    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
-
-    Globals.initUiGlobals()
-
-    QtWidgets.QApplication.setFont( Globals.normalFont )
 
     # reading commits (1/3)...
 
@@ -225,11 +232,7 @@ def main():
     if not args.no_numstat:
         commit = None
         cmd = ['git', 'log', '--reverse', '--topo-order', '--format=%h', '--numstat', Globals.branch, '--']
-        if Globals.includeDirectories or Globals.includeFiles:
-            cmd.extend( Globals.includeDirectories )
-            cmd.extend( Globals.includeFiles )
-        else:
-            cmd.append( '.' )
+        cmd.extend( Globals.includePaths )
         for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
             if log:
                 if not '\t' in log:
@@ -301,10 +304,18 @@ def main():
     # load cache
 
     if os.path.isfile( filepath_cacheJson ):
-        cache = json.load( open( filepath_cacheJson, 'r' ) )
-        for hash in cache['history']:
-            if hash in Globals.allCommitsHash:
-                Globals.allCommitsHash[hash].hash_filename_history = cache['history'][hash]
+        cache = json.load( open( filepath_cacheJson, 'r' ), object_pairs_hook=collections.OrderedDict )
+        if not 'history' in cache:
+            cache['history'] = collections.OrderedDict()
+        if not 'diff-hash' in cache:
+            cache['diff-hash'] = collections.OrderedDict()
+        if not 'strict' in cache['diff-hash']:
+            cache['diff-hash']['strict'] = collections.OrderedDict()
+        if not 'space-tolerant' in cache['diff-hash']:
+            cache['diff-hash']['space-tolerant'] = collections.OrderedDict()
+        Globals.hash_commit_filename_history = cache['history']
+        Globals.hash_commit_filenames_diffHash = cache['diff-hash']['strict']
+        Globals.hash_commit_filenames_spaceTolerantDiffHash = cache['diff-hash']['space-tolerant']
 
     # building window...
 
@@ -344,7 +355,7 @@ def main():
         item = QtWidgets.QTreeWidgetItem( [
             str(commit.index),
             commit.commitHash,
-            '',
+            GitUtils.getDiffHash( commit.commitHash, Globals.includePaths, forceGeneration=False ),
             readableLines,
             readableTags,
             commit.getDateString(),
@@ -570,10 +581,10 @@ def main():
 
     if not args.no_cache:
         cache = collections.OrderedDict()
-        cache['history'] = collections.OrderedDict()
-        for commit in Globals.allCommits:
-            if commit.hash_filename_history:
-                cache['history'][commit.commitHash] = commit.hash_filename_history
+        cache['history'] = Globals.hash_commit_filename_history
+        cache['diff-hash'] = collections.OrderedDict()
+        cache['diff-hash']['strict'] = Globals.hash_commit_filenames_diffHash
+        cache['diff-hash']['space-tolerant'] = Globals.hash_commit_filenames_spaceTolerantDiffHash
         if cache or os.path.isfile( filepath_cacheJson ): # do not create file if not necessary
             json.dump( cache, open( filepath_cacheJson, 'w' ), indent=2 )
 
