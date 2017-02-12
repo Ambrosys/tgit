@@ -6,17 +6,51 @@ import GitUtils
 from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
+import os
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1
 filesListItemColumn_filename = 2
 filesListItemColumnCount = 3
 
-def diff_nonblocking( commit, file ):
-    file1content = Utils.call( ['git', 'show', '%s~1:%s' % (commit.commitHash, file)], cwd=Globals.repositoryDir )
-    file2content = Utils.call( ['git', 'show', '%s:%s' % (commit.commitHash, file)], cwd=Globals.repositoryDir )
-    file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_OLD_%s' % os.path.basename(file) )
-    file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_NEW_%s' % os.path.basename(file) )
+def showContextMenu( item, globalPos ):
+    """
+    :type item: QtWidgets.QTreeWidgetItem
+    :type globalPos: QtCore.QPoint
+    """
+    receiver = CompareFileMenuSlot( item.text( filesListItemColumn_filename ) )
+    menu = QtWidgets.QMenu( receiver )
+    compareMenu = menu.addMenu( 'compare to' )
+    for file in Globals.selectedCommit.files:
+        (status, name) = (file.status, file.name)
+        if status[0] != 'A':
+            compareMenu.addAction( name, receiver.slot_compareFromFile )
+
+    menu.exec( globalPos )
+
+class CompareFileMenuSlot( QtWidgets.QWidget ):
+
+    def __init__( self, compareToFile ):
+        super().__init__()
+        self.compareToFile = compareToFile
+
+    @QtCore.pyqtSlot()
+    def slot_compareFromFile( self ):
+        compareFromFile = self.sender().text()
+        thread = threading.Thread( target=diff_nonblocking, args=(Globals.selectedCommit, compareFromFile, self.compareToFile) )
+        thread.start()
+
+@QtCore.pyqtSlot( QtCore.QPoint )
+def on_filesList_customContextMenuRequested( pos ):
+    item = Globals.ui_filesList.itemAt( pos )
+    if item:
+        showContextMenu( item, Globals.ui_filesList.viewport().mapToGlobal( pos ) )
+
+def diff_nonblocking( commit, fromFile, toFile ):
+    file1content = Utils.call( ['git', 'show', '%s~1:%s' % (commit.commitHash, fromFile)], cwd=Globals.repositoryDir )
+    file2content = Utils.call( ['git', 'show', '%s:%s' % (commit.commitHash, toFile)], cwd=Globals.repositoryDir )
+    file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_OLD_%s' % os.path.basename(fromFile) )
+    file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_NEW_%s' % os.path.basename(toFile) )
     file1.write( '\n'.join( file1content ) )
     file2.write( '\n'.join( file2content ) )
     file1.flush()
@@ -39,7 +73,7 @@ def on_filesList_itemSelectionChanged():
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
 def on_filesList_itemActivated( item ):
     file = item.text( filesListItemColumn_filename )
-    thread = threading.Thread( target=diff_nonblocking, args=(Globals.selectedCommit, file) )
+    thread = threading.Thread( target=diff_nonblocking, args=(Globals.selectedCommit, file, file) )
     thread.start()
 
 @QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )

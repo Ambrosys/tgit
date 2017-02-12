@@ -360,10 +360,10 @@ class App:
         Globals.ui_commitList.setColumnHidden( CommitList.commitListItemColumn_diff, not Globals.calculateDiffHashes )
         Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
         Globals.ui_commitList.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
-        Globals.ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
         Globals.ui_commitList.currentItemChanged.connect( CommitList.on_commitList_currentItemChanged )
-        Globals.ui_commitList.customContextMenuRequested.connect( CommitList.on_commitList_customContextMenuRequested )
         Globals.ui_commitList.itemSelectionChanged.connect( CommitList.slot_updateCommitListInfo )
+        Globals.ui_commitList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+        Globals.ui_commitList.customContextMenuRequested.connect( CommitList.on_commitList_customContextMenuRequested )
 
         for commit in reversed( Globals.allCommits ):
             readableLines = str( commit.added + commit.removed )
@@ -527,6 +527,8 @@ class App:
         Globals.ui_filesList.itemSelectionChanged.connect( FileList.on_filesList_itemSelectionChanged )
         Globals.ui_filesList.itemActivated.connect( FileList.on_filesList_itemActivated )
         Globals.ui_filesList.currentItemChanged.connect( FileList.on_filesList_currentItemChanged )
+        Globals.ui_filesList.setContextMenuPolicy( QtCore.Qt.CustomContextMenu )
+        Globals.ui_filesList.customContextMenuRequested.connect( FileList.on_filesList_customContextMenuRequested )
 
         ui_diffSplitter = QtWidgets.QSplitter()
         ui_diffSplitter.setOrientation( QtCore.Qt.Vertical )
