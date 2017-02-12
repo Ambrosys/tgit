@@ -19,6 +19,8 @@ smallPointSize = 8
 
 temporarilyNoDiffViewer = False
 
+app = None
+ui_progressDialog = None
 ui_commitList = None
 ui_commitListInfo = None
 ui_diffViewer = None
