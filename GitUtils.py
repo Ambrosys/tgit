@@ -4,7 +4,7 @@ import Globals
 
 import site
 import os
-site.addsitedir( os.path.join( os.path.dirname( __file__ ), 'ansi2html' ) )
+site.addsitedir( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), 'ansi2html' ) )
 import ansi2html
 
 import re
