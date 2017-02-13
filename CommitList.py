@@ -124,7 +124,7 @@ def on_commitList_currentItemChanged( current, before ):
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
             item = QtWidgets.QTreeWidgetItem( [
-                GitUtils.getDiffHash( Globals.selectedCommit.commitHash, name, forceGeneration=False ),
+                GitUtils.getDiffHash( Globals.selectedCommit.commitHash, [name], forceGeneration=False ),
                 readableLines,
                 status,
                 name
