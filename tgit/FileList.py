@@ -30,7 +30,7 @@ def diff_nonblocking( commit, file ):
 def on_filesList_itemSelectionChanged():
     items = Globals.ui_filesList.selectedItems()
     if items:
-        files = list( map( lambda item: item.text( filesListItemColumn_filename ), items ) )
+        files = [item.text( filesListItemColumn_filename ) for item in items]
         cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
         cmd.extend( files )
         diff = Utils.call( cmd, cwd=Globals.repositoryDir )
