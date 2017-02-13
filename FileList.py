@@ -10,21 +10,33 @@ import os
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1
-filesListItemColumn_filename = 2
-filesListItemColumnCount = 3
+filesListItemColumn_status = 2
+filesListItemColumn_filename = 3
+filesListItemColumnCount = 4
 
 def showContextMenu( item, globalPos ):
     """
     :type item: QtWidgets.QTreeWidgetItem
     :type globalPos: QtCore.QPoint
     """
-    receiver = CompareFileMenuSlot( item.text( filesListItemColumn_filename ) )
+    parents = Globals.selectedCommit.getParents( Globals.allCommitsHash )
+    compareToFile = item.text( filesListItemColumn_filename )
+    receiver = CompareFileMenuSlot( compareToFile )
     menu = QtWidgets.QMenu( receiver )
-    compareMenu = menu.addMenu( 'compare to' )
-    for file in Globals.selectedCommit.files:
-        (status, name) = (file.status, file.name)
-        if status[0] != 'A':
-            compareMenu.addAction( name, receiver.slot_compareFromFile )
+    for parent in parents:
+        compareMenu = menu.addMenu( 'compare to %s' % parent.commitHash )
+        compareMenu.addAction( compareToFile, receiver.slot_compareFromFile )
+        compareFromFiles = []
+        for file in parent.files:
+            (status, name) = (file.status, file.name)
+            if name == compareToFile:
+                continue
+            if status[0] != 'D' and status[0] != '?':
+                compareFromFiles.append( name )
+        if compareFromFiles:
+            compareMenu.addSeparator()
+            for name in compareFromFiles:
+                compareMenu.addAction( name, receiver.slot_compareFromFile )
 
     menu.exec( globalPos )
 
@@ -37,7 +49,8 @@ class CompareFileMenuSlot( QtWidgets.QWidget ):
     @QtCore.pyqtSlot()
     def slot_compareFromFile( self ):
         compareFromFile = self.sender().text()
-        thread = threading.Thread( target=diff_nonblocking, args=(Globals.selectedCommit, compareFromFile, self.compareToFile) )
+        compareFromCommitHash = self.sender().parent().title()[11:] # cut out 'compare to '
+        thread = threading.Thread( target=diff_nonblocking, args=(compareFromCommitHash, Globals.selectedCommit.commitHash, compareFromFile, self.compareToFile) )
         thread.start()
 
 @QtCore.pyqtSlot( QtCore.QPoint )
@@ -46,11 +59,11 @@ def on_filesList_customContextMenuRequested( pos ):
     if item:
         showContextMenu( item, Globals.ui_filesList.viewport().mapToGlobal( pos ) )
 
-def diff_nonblocking( commit, fromFile, toFile ):
-    file1content = Utils.call( ['git', 'show', '%s~1:%s' % (commit.commitHash, fromFile)], cwd=Globals.repositoryDir )
-    file2content = Utils.call( ['git', 'show', '%s:%s' % (commit.commitHash, toFile)], cwd=Globals.repositoryDir )
-    file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_OLD_%s' % os.path.basename(fromFile) )
-    file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_NEW_%s' % os.path.basename(toFile) )
+def diff_nonblocking( fromCommitReference, toCommitReference, fromFile, toFile ):
+    file1content = Utils.call( ['git', 'show', '%s:%s' % (fromCommitReference, fromFile)], cwd=Globals.repositoryDir )
+    file2content = Utils.call( ['git', 'show', '%s:%s' % (toCommitReference, toFile)], cwd=Globals.repositoryDir )
+    file1 = tempfile.NamedTemporaryFile( mode='w', suffix='_%s_%s' % (fromCommitReference, os.path.basename(fromFile)) )
+    file2 = tempfile.NamedTemporaryFile( mode='w', suffix='_%s_%s' % (toCommitReference, os.path.basename(toFile)) )
     file1.write( '\n'.join( file1content ) )
     file2.write( '\n'.join( file2content ) )
     file1.flush()
@@ -73,7 +86,7 @@ def on_filesList_itemSelectionChanged():
 @QtCore.pyqtSlot( QtWidgets.QListWidgetItem )
 def on_filesList_itemActivated( item ):
     file = item.text( filesListItemColumn_filename )
-    thread = threading.Thread( target=diff_nonblocking, args=(Globals.selectedCommit, file, file) )
+    thread = threading.Thread( target=diff_nonblocking, args=('%s~1' % Globals.selectedCommit.commitHash, Globals.selectedCommit.commitHash, file, file) )
     thread.start()
 
 @QtCore.pyqtSlot( QtWidgets.QTreeWidgetItem, QtWidgets.QTreeWidgetItem )

@@ -193,7 +193,11 @@ class App:
         cmd = ['git', 'log', '-z', '--reverse', '--topo-order', '--format=%h%x09%p%x09%an%x09%ae%x09%aI%x09%B', Globals.branch]
         for log in Utils.call_nullSeperated( cmd, cwd=Globals.repositoryDir ):
             if log:
-                (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
+                try:
+                    (commitHash, parents, originalAuthor, email, date, message) = log.split( '\t', 5 )
+                except ValueError:
+                    print( 'Could not understand log line: %s' % log )
+                    continue
 
                 if originalAuthor in Authors.allAuthorsHash:
                     author = Authors.allAuthorsHash[originalAuthor]
@@ -236,7 +240,7 @@ class App:
         updateProgressDialogSignal.emit( 'Reading...', 2 )
 
         commit = None
-        cmd = ['git', 'log', '--reverse', '--topo-order', '--format=%h', '--name-status', Globals.branch]
+        cmd = ['git', 'log', '--cc', '--reverse', '--topo-order', '--format=%h', '--name-status', Globals.branch]
         for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
             if log:
                 if not '\t' in log:
@@ -250,7 +254,7 @@ class App:
 
         if not self.args.no_numstat:
             commit = None
-            cmd = ['git', 'log', '--reverse', '--topo-order', '--format=%h', '--numstat', Globals.branch, '--']
+            cmd = ['git', 'log', '--cc', '--reverse', '--topo-order', '--format=%h', '--numstat', Globals.branch, '--']
             cmd.extend( Globals.includePaths )
             for log in Utils.call( cmd, cwd=Globals.repositoryDir ):
                 if log:
@@ -356,6 +360,8 @@ class App:
             'branch',
             'message'
         ] ) )
+        Globals.ui_commitList.headerItem().setTextAlignment( CommitList.commitListItemColumn_index, QtCore.Qt.AlignRight )
+        Globals.ui_commitList.headerItem().setTextAlignment( CommitList.commitListItemColumn_lines, QtCore.Qt.AlignRight )
         Globals.ui_commitList.setColumnCount( CommitList.commitListItemColumnCount )
         Globals.ui_commitList.setColumnHidden( CommitList.commitListItemColumn_diff, not Globals.calculateDiffHashes )
         Globals.ui_commitList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
@@ -519,7 +525,9 @@ class App:
 
         Globals.ui_filesList = QtWidgets.QTreeWidget()
         Globals.ui_filesList.setRootIsDecorated( False )
-        Globals.ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['diff', 'lines', 'file'] ) )
+        Globals.ui_filesList.setHeaderItem( QtWidgets.QTreeWidgetItem( ['diff', 'lines', '*', 'file'] ) )
+        Globals.ui_filesList.headerItem().setTextAlignment( FileList.filesListItemColumn_lines, QtCore.Qt.AlignRight )
+        Globals.ui_filesList.headerItem().setTextAlignment( FileList.filesListItemColumn_status, QtCore.Qt.AlignCenter )
         Globals.ui_filesList.setColumnCount( FileList.filesListItemColumnCount )
         Globals.ui_filesList.setColumnHidden( FileList.filesListItemColumn_diff, not Globals.calculateDiffHashes )
         Globals.ui_filesList.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
