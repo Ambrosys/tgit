@@ -17,7 +17,7 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
     stdoutput, stderroutput = process.communicate( input )
     outputList = stdoutput.split( b'\x00' )
     try:
-        outputStrings = [map( lambda s: ]s.decode('utf-8') for s in  outputList]
+        outputStrings = [s.decode('utf-8') for s in  outputList]
     except UnicodeDecodeError:
         outputStrings = [str(s) for s in  outputList]
     return outputStrings
