@@ -7,6 +7,7 @@ import Globals
 from PyQt5 import QtWidgets, QtGui, QtCore
 import os
 import argparse
+import signal
 
 def addColor( ui_list, color, name, alignRight ):
     color_normalized = Colors.optimizeForBackground( color )
@@ -30,6 +31,7 @@ def addColor( ui_list, color, name, alignRight ):
     ui_list.addTopLevelItem( item )
 
 def main():
+    signal.signal( signal.SIGINT, signal.SIG_DFL )
 
     parser = argparse.ArgumentParser( description='Color test utility for tgit.' )
     parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
