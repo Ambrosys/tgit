@@ -94,6 +94,9 @@ def on_commitList_currentItemChanged( current, before ):
     :type before: QtWidgets.QTreeWidgetItem
     """
 
+    if current == before:
+        return # because this event gets fired if you click on a different column of the same item
+
     pixmap = QtGui.QPixmap( 64, 64 )
     pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
 
