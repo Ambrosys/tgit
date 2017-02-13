@@ -3,15 +3,14 @@ import os
 import hashlib
 import re
 
-import ansi2html
 from PyQt5 import QtWidgets, QtGui, QtCore
-
+import ansi2html
 
 from . import Globals
 from . import Utils
 from . import Filter
 from . import FileList
-
+from . import GitUtils
 
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1
@@ -130,34 +129,44 @@ def on_commitList_currentItemChanged( current, before ):
         for file in Globals.selectedCommit.files:
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
-            item = QtWidgets.QTreeWidgetItem( ['', readableLines, name] )
+            item = QtWidgets.QTreeWidgetItem( [
+                GitUtils.getDiffHash( Globals.selectedCommit.commitHash, name, forceGeneration=False ),
+                readableLines,
+                status,
+                name
+                ] )
             for i in range( FileList.filesListItemColumnCount ):
                 item.setFont( i, Globals.smallFont )
             item.setFont( FileList.filesListItemColumn_diff, Globals.courierFont )
             item.setTextAlignment( FileList.filesListItemColumn_lines, QtCore.Qt.AlignRight )
+            item.setTextAlignment( FileList.filesListItemColumn_status, QtCore.Qt.AlignCenter )
+            colors_dark = {
+                'M': item.foreground(0),
+                'A': QtGui.QBrush( QtCore.Qt.darkGreen ),
+                'D': QtGui.QBrush( QtCore.Qt.red ),
+                'C': item.foreground(0),
+                'R': item.foreground(0),
+                'T': item.foreground(0),
+                'U': item.foreground(0),
+                '?': item.foreground(0)
+                }
+            colors_light = {
+                'M': QtGui.QBrush( QtCore.Qt.lightGray ),
+                'A': QtGui.QBrush( QtGui.QColor(164,192,164) ),
+                'D': QtGui.QBrush( QtGui.QColor(255,192,192) ),
+                'C': QtGui.QBrush( QtCore.Qt.lightGray ),
+                'R': QtGui.QBrush( QtCore.Qt.lightGray ),
+                'T': QtGui.QBrush( QtCore.Qt.lightGray ),
+                'U': QtGui.QBrush( QtCore.Qt.lightGray ),
+                '?': QtGui.QBrush( QtCore.Qt.lightGray )
+                }
             if Filter.passesPathFilter( name ):
-                colors = {
-                    'M': item.foreground(0),
-                    'A': QtGui.QBrush( QtCore.Qt.darkGreen ),
-                    'D': QtGui.QBrush( QtCore.Qt.red ),
-                    'C': item.foreground(0),
-                    'R': item.foreground(0),
-                    'T': item.foreground(0),
-                    'U': item.foreground(0)
-                    }
-                item.setForeground( FileList.filesListItemColumn_filename, colors[status[0]] )
+                item.setForeground( FileList.filesListItemColumn_status, colors_dark[status[0]] if status[0] != '?' else QtGui.QBrush( QtCore.Qt.blue ) )
+                item.setForeground( FileList.filesListItemColumn_filename, colors_dark[status[0]] if status[0] != '?' else colors_light[status[0]] )
             else:
-                colors = {
-                    'M': QtGui.QBrush( QtCore.Qt.lightGray ),
-                    'A': QtGui.QBrush( QtGui.QColor(164,192,164) ),
-                    'D': QtGui.QBrush( QtGui.QColor(255,192,192) ),
-                    'C': QtGui.QBrush( QtCore.Qt.lightGray ),
-                    'R': QtGui.QBrush( QtCore.Qt.lightGray ),
-                    'T': QtGui.QBrush( QtCore.Qt.lightGray ),
-                    'U': QtGui.QBrush( QtCore.Qt.lightGray )
-                    }
                 item.setForeground( FileList.filesListItemColumn_lines, QtGui.QBrush( QtCore.Qt.lightGray ) )
-                item.setForeground( FileList.filesListItemColumn_filename, colors[status[0]] )
+                item.setForeground( FileList.filesListItemColumn_status, colors_light[status[0]] )
+                item.setForeground( FileList.filesListItemColumn_filename, colors_light[status[0]] )
             Globals.ui_filesList.addTopLevelItem( item )
 
         # set parents/children background
@@ -172,38 +181,13 @@ def on_commitList_currentItemChanged( current, before ):
             item.setIcon( 0, QtGui.QIcon( pixmap ) )
 
         if Globals.ui_diffViewerCheckBox.isChecked() and not Globals.temporarilyNoDiffViewer:
-            cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--color-words', '--']
-            files = []
-            if Globals.includeDirectories or Globals.includeFiles:
-                files.extend( Globals.includeDirectories )
-                files.extend( Globals.includeFiles )
-            else:
-                files.append( '.' )
-            cmd.extend( files )
-            diff = Utils.call( cmd, cwd=Globals.repositoryDir )
-            conv = ansi2html.Ansi2HTMLConverter( font_size="9pt" )
-            ansi = '\n'.join( diff )
-            html = conv.convert( ansi )
-            #html = '\n'.join( Utils.call( ['ansi2html.sh', '--bg=dark'], input=ansi ) )
-            Globals.ui_diffViewer.setHtml( html )
+            Globals.ui_diffViewer.setHtml( GitUtils.getDiffHtml( Globals.selectedCommit.commitHash, Globals.includePaths ) )
 
             if Globals.calculateDiffHashes:
-                cmd = ['git', 'show', '--format=', Globals.selectedCommit.commitHash, '--']
-                cmd.extend( files )
-                diff = Utils.call( cmd, cwd=Globals.repositoryDir )
-                # replace patterns like "index 5504aae..f60cf6b 100755" or
-                # "index 5504aae..f60cf6b" with "index 0000000..0000000 100755"
-                # or "index 0000000..0000000" respectively
-                regex = re.compile("^index [a-z0-9]+\.\.[a-z0-9]+( [0-9]+)?$")
-                diff[:] = [regex.sub( 'index 0000000..0000000\\1', line ) for line in diff]
-                if Globals.calculateDiffHashesSpaceTolerant:
-                    # remove blank lines and white space at EOL
-                    diff[:] = [line.rstrip() for line in diff if line.strip()]
-
-                m = hashlib.sha1()
-                m.update( '\n'.join( diff ).encode('utf-8') )
                 item = Globals.ui_commitListItemHash[Globals.selectedCommit.commitHash]
-                item.setText( commitListItemColumn_diff, m.digest().hex()[:7] )
+                if not item.text( commitListItemColumn_diff ):
+                    diffHash = GitUtils.getDiffHash( Globals.selectedCommit.commitHash, Globals.includePaths, forceGeneration=True )
+                    item.setText( commitListItemColumn_diff, diffHash )
         else:
             Globals.ui_diffViewer.setHtml( '<html><body style="background: black;"></body></html>' )
 

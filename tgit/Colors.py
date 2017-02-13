@@ -2,7 +2,6 @@ from PyQt5 import QtGui
 import skimage.color
 import numpy as np
 
-
 colors = [
     "#2c3e50",
     "#c0392b",
