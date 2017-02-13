@@ -80,10 +80,15 @@ def main():
     parser.add_argument( '--no-cache', action='store_true', help = 'do not save cache file' )
     parser.add_argument( '-r', '--read-only', action='store_true', help = 'read-only mode' )
     parser.add_argument( '-d', '--diff-hash', action='store_true', help = 'calculate diff hashes in views' )
+    parser.add_argument( '-s', '--space-tolerant', action='store_true', help = 'ignore blank lines and white space at EOL in diff hashes' )
     args = parser.parse_args()
 
     if args.no_numstat and args.full_numstat:
         print( 'Error: --no-numstat and --full-numstat are mutually exclusive.' )
+        exit( 1 )
+
+    if args.space_tolerant and not args.diff_hash:
+        print( 'Error: --space-tolerant requires --diff-hash.' )
         exit( 1 )
 
     if not os.path.isdir( args.root ):
@@ -96,6 +101,7 @@ def main():
 
     Globals.readOnlyMode = args.read_only
     Globals.calculateDiffHashes = args.diff_hash
+    Globals.calculateDiffHashesSpaceTolerant = args.space_tolerant
 
     configDir = args.config_dir
     filepath_tagsJson = os.path.join( configDir, args.tags )
