@@ -1,10 +1,10 @@
-
-import Globals
-import Filter
-import CreateUi
-import FileList
-
 from PyQt5 import QtWidgets, QtGui, QtCore
+
+from . import Globals
+from . import Filter
+from . import CreateUi
+from . import FileList
+
 
 # if we do not hold the windows anywhere, they get garbage-collected before they could ever show up
 Globals.openWindows = set()

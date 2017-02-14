@@ -1,8 +1,9 @@
-
-import Globals
-import Utils
 import datetime
 import collections
+
+from . import Globals
+from . import Utils
+
 
 class CommitFile:
     def __init__( self, name ):
@@ -79,7 +80,7 @@ class Commit:
         self._recalculateOverallNumstat()
 
     def getFilenames( self ):
-        return list( map( lambda file: file.name, self.files ) )
+        return [file.name for file in self.files]
 
     def getChildrenUnsorted( self ):
         if self._children is None:

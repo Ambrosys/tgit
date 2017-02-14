@@ -97,3 +97,6 @@ ansi2html/
 
 # tgit
 tgit-*.json
+
+# pip download dir
+**/src/

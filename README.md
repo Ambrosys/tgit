@@ -4,20 +4,12 @@ This is a simple git GUI for tagging commits.
 
 ## Installation
 
-You need python3 with pyqt5 (for the GUI) and skimage (for color calculations):
 
 ```bash
-sudo apt install python3-pyqt5 python3-skimage
+pip install -e git+https://github.com/Ambrosys/tgit.git#egg=tgit
 ```
 
-For the git-diff rendering the
-[ansi2html library](https://github.com/ralphbean/ansi2html) is expected to
-reside under the root directory of this project:
 
-```bash
-cd tgit
-git clone https://github.com/ralphbean/ansi2html.git
-```
 
 ## tgit -h
 
@@ -167,18 +159,18 @@ Example:
 
 ## Helper utilities
 
-### show-tgit-colors
+### tgit-show-colors
 
 Lists all colors defined in an authors file (if given)
 and the colors of the integrated color palette
 and how they will be rendered in the commits view.
 
 ```bash
-show-tgit-colors -h
+tgit-show-colors -h
 ```
 
 ```
-usage: show-tgit-colors [-h] [--authors FILENAME]
+usage: tgit-show-colors [-h] [--authors FILENAME]
 
 Color test utility for tgit.
 

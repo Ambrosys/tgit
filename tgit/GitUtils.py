@@ -1,15 +1,13 @@
-
-import Utils
-import Globals
-
 import site
-import os
-site.addsitedir( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), 'ansi2html' ) )
-import ansi2html
-
 import re
 import hashlib
 import collections
+
+import ansi2html
+
+from . import Utils
+from . import  Globals
+
 
 def _calculateDiffHash( commitHash, paths ):
     cmd = ['git', 'show', '--format=', commitHash, '--']

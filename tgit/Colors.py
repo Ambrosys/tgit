@@ -1,3 +1,6 @@
+from PyQt5 import QtGui
+import skimage.color
+import numpy as np
 
 colors = [
     "#2c3e50",
@@ -15,9 +18,6 @@ colors = [
     "#ecf0f1"
     ]
 
-from PyQt5 import QtGui
-import skimage.color
-import numpy as np
 
 def optimizeForBackground( color ):
     return _specificDistanceInLabToReferenceColor( color, QtGui.QColor( 255, 255, 255 ), 9.0 )

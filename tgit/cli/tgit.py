@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-
-import Globals
-import App
-
 import argparse
 import os
 import signal
+
+from .. import Globals
+from .. import App
+
 
 def main():
     signal.signal( signal.SIGINT, signal.SIG_DFL )
@@ -47,6 +46,3 @@ def main():
 
     Globals.app = App.App( args )
     Globals.app.run()
-
-if __name__ == '__main__':
-    main()

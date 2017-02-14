@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
-
-import Colors
-import Authors
-import Globals
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import os
 import argparse
 import signal
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+
+from .. import Colors
+from .. import Authors
+from .. import Globals
+
 
 def addColor( ui_list, color, name, alignRight ):
     color_normalized = Colors.optimizeForBackground( color )
@@ -80,6 +80,3 @@ def main():
     ui_window.show()
 
     ui_app.exec_()
-
-if __name__ == '__main__':
-    main()

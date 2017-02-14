@@ -1,12 +1,13 @@
-
-import Globals
-import Filter
-import GeneralUi
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import functools
 import copy
 import collections
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+
+from . import Globals
+from . import Filter
+from . import GeneralUi
+
 
 @QtCore.pyqtSlot()
 def slot_selectCheckBoxes( checkBoxes, select, slot ):

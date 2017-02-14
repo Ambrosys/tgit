@@ -1,4 +1,3 @@
-
 from PyQt5 import QtWidgets, QtGui, QtCore
 
 repositoryDir = None
@@ -59,6 +58,7 @@ normalFont = None
 smallFont = None
 courierFont = None
 boldFont = None
+
 def initUiGlobals():
     """
     Call this after QtWidgets.QApplication() was constructed.

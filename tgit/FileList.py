@@ -1,12 +1,12 @@
-
-import Globals
-import Utils
-import GitUtils
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import threading
 import tempfile
-import os
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+
+from . import Globals
+from . import Utils
+from . import GitUtils
+
 
 filesListItemColumn_diff = 0
 filesListItemColumn_lines = 1

@@ -1,21 +1,21 @@
-
-import Globals
-import Utils
-import Filter
-import CommitList
-import FileList
-import CreateUi
-import GeneralUi
-import Commit
-import Authors
-import GitUtils
-
-from PyQt5 import QtWidgets, QtGui, QtCore
 import json
 import collections
 import re
 import os
 import datetime
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+
+from . import Globals
+from . import  Utils
+from . import  Filter
+from . import  CommitList
+from . import  FileList
+from . import  CreateUi
+from . import  GeneralUi
+from . import  Commit
+from . import  Authors
+from . import  GitUtils
 
 @QtCore.pyqtSlot()
 def on_tagCheckBox_clicked():
@@ -100,7 +100,7 @@ class App:
         self.ui_window = None
 
         self.ui_app = QtWidgets.QApplication( [] )
-        self.ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), 'img/tgit-logo.svg' ) ) )
+        self.ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), '../img/tgit-logo.svg' ) ) )
 
         Globals.initUiGlobals()
         QtWidgets.QApplication.setFont( Globals.normalFont )

@@ -1,4 +1,3 @@
-
 import subprocess
 
 def call( cmd, cwd=None, input=None ):
@@ -18,7 +17,7 @@ def call_nullSeperated( cmd, cwd=None, input=None ):
     stdoutput, stderroutput = process.communicate( input )
     outputList = stdoutput.split( b'\x00' )
     try:
-        outputStrings = list( map( lambda s: s.decode('utf-8'), outputList ) )
+        outputStrings = [s.decode('utf-8') for s in  outputList]
     except UnicodeDecodeError:
-        outputStrings = list( map( lambda s: str( s ), outputList ) )
+        outputStrings = [str(s) for s in  outputList]
     return outputStrings

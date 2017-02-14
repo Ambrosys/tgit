@@ -1,10 +1,16 @@
-
-import Globals
-import Filter
-import FileList
-import GitUtils
+import site
+import os
+import hashlib
+import re
 
 from PyQt5 import QtWidgets, QtGui, QtCore
+import ansi2html
+
+from . import Globals
+from . import Utils
+from . import Filter
+from . import FileList
+from . import GitUtils
 
 commitListItemColumn_index = 0
 commitListItemColumn_commit = 1
