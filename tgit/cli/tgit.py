@@ -46,6 +46,3 @@ def main():
 
     Globals.app = App.App( args )
     Globals.app.run()
-
-if __name__ == '__main__':
-    main()

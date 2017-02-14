@@ -1,7 +1,12 @@
+import sys
+
+PY3 = sys.version_info[0] == 3
+if not PY3:
+    raise RuntimeError("tgit supports python3 only")
+
 import re
 import ast
 from setuptools import setup, find_packages
-
 
 _version_re = re.compile(r'__VERSION__\s+=\s+(.*)')
 
