@@ -95,6 +95,10 @@ def on_filesList_currentItemChanged( current, before ):
     :type current: QtWidgets.QTreeWidgetItem
     :type before: QtWidgets.QTreeWidgetItem
     """
+
+    if current == before:
+        return # because this event gets fired if you click on a different column of the same item
+
     Globals.ui_followViewerScrollArea.setVisible( bool( current ) )
     if current:
         filename = current.text(filesListItemColumn_filename)

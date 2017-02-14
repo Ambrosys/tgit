@@ -100,6 +100,9 @@ def on_commitList_currentItemChanged( current, before ):
     :type before: QtWidgets.QTreeWidgetItem
     """
 
+    if current == before:
+        return # because this event gets fired if you click on a different column of the same item
+
     pixmap = QtGui.QPixmap( 64, 64 )
     pixmap.fill( QtGui.QColor( 230, 108, 30, 255 ) )
 
@@ -130,7 +133,7 @@ def on_commitList_currentItemChanged( current, before ):
             (status, name) = (file.status, file.name)
             readableLines = str( file.added + file.removed )
             item = QtWidgets.QTreeWidgetItem( [
-                GitUtils.getDiffHash( Globals.selectedCommit.commitHash, name, forceGeneration=False ),
+                GitUtils.getDiffHash( Globals.selectedCommit.commitHash, [name], forceGeneration=False ),
                 readableLines,
                 status,
                 name

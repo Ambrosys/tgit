@@ -27,6 +27,11 @@ def _calculateDiffHash( commitHash, paths ):
     return m.digest().hex()[:7]
 
 def getDiffHash( commitHash, paths, forceGeneration ):
+    """
+    :type paths: list[str]
+    """
+    assert isinstance( paths, list )
+
     pathsString = ':'.join( sorted( paths ) )
 
     if Globals.calculateDiffHashesSpaceTolerant:

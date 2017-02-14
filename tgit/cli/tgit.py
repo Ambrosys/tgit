@@ -1,11 +1,14 @@
 import argparse
 import os
+import signal
 
 from .. import Globals
 from .. import App
 
 
 def main():
+    signal.signal( signal.SIGINT, signal.SIG_DFL )
+
     parser = argparse.ArgumentParser( description='tgit is a simple git GUI for tagging commits.' )
     parser.add_argument( 'root', nargs='?', type=str, default='.', help = 'root directory of the repository, default: %(default)s' )
     parser.add_argument( 'paths', nargs='*', type=str, default=[], help = 'restrict to given paths' )

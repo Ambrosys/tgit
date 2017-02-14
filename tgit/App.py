@@ -100,7 +100,7 @@ class App:
         self.ui_window = None
 
         self.ui_app = QtWidgets.QApplication( [] )
-        self.ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), '../img/tgit-logo.svg' ) ) )
+        self.ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), '../img/tgit-logo.svg' ) ) )
 
         Globals.initUiGlobals()
         QtWidgets.QApplication.setFont( Globals.normalFont )

@@ -1,5 +1,6 @@
 import os
 import argparse
+import signal
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 
@@ -30,13 +31,14 @@ def addColor( ui_list, color, name, alignRight ):
     ui_list.addTopLevelItem( item )
 
 def main():
+    signal.signal( signal.SIGINT, signal.SIG_DFL )
 
     parser = argparse.ArgumentParser( description='Color test utility for tgit.' )
     parser.add_argument( '--authors', metavar='FILENAME', type=str, default='tgit-authors.json', help = 'authors config file, default: %(default)s' )
     args = parser.parse_args()
 
     ui_app = QtWidgets.QApplication( [] )
-    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( __file__ ), 'img/tgit-logo.svg' ) ) )
+    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), 'img/tgit-logo.svg' ) ) )
 
     Globals.initUiGlobals()
 
