@@ -6,7 +6,7 @@ This is a simple git GUI for tagging commits.
 
 
 ```bash
-pip install -e git+https://github.com/Ambrosys/tgit.git#egg=tgit
+sudo pip3 install -e git+https://github.com/Ambrosys/tgit.git#egg=tgit
 ```
 
 
