@@ -38,7 +38,7 @@ def main():
     args = parser.parse_args()
 
     ui_app = QtWidgets.QApplication( [] )
-    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), 'img/tgit-logo.svg' ) ) )
+    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), '../../img/tgit-logo.svg' ) ) )
 
     Globals.initUiGlobals()
 
@@ -80,3 +80,6 @@ def main():
     ui_window.show()
 
     ui_app.exec_()
+
+if __name__ == '__main__':
+    main()

@@ -4,12 +4,59 @@ This is a simple git GUI for tagging commits.
 
 ## Installation
 
+### a) pip
+
+**Attention**: Not working yet.
+
+**Note**: GUI style may not look native on Ubuntu,
+because this uses PyQt5 distributed by pip.
 
 ```bash
-sudo pip3 install -e git+https://github.com/Ambrosys/tgit.git#egg=tgit
+pip3 install --user git+https://github.com/Ambrosys/tgit.git#egg=tgit
 ```
 
+### b) pip, retaining the repository
 
+**Note**: GUI style may not look native on Ubuntu,
+because this uses PyQt5 distributed by pip.
+
+* git clone this project into some directory.
+* cd into it
+* Run:
+  ```bash
+  pip3 install --user -e .
+  ```
+
+### c) native look and feel
+
+This uses PyQt5 distributed by your distribution.
+
+* Run:
+  ```bash
+  sudo apt install python3-pyqt5
+  pip3 install --user ansi2html scikit-image
+  ```
+* git clone this project into some directory.
+* Create executable tgit script (adjust `/path/to/tgit-repository`):
+  ```bash
+  #!/bin/bash
+  PYTHONPATH="$PYTHONPATH:/path/to/tgit-repository" python3 -m tgit.cli.tgit
+  ```
+* Create executable tgit-show-colors script (adjust `/path/to/tgit-repository`):
+  ```bash
+  #!/bin/bash
+  PYTHONPATH="$PYTHONPATH:/path/to/tgit-repository" python3 -m tgit.cli.show_colors
+  ```
+
+## Deinstallation
+
+```bash
+pip3 uninstall -y tgit pyqt5 sip
+
+# May be necessary:
+rm ~/.local/bin/tgit
+rm ~/.local/bin/tgit-show-colors
+```
 
 ## tgit -h
 
