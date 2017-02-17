@@ -29,7 +29,8 @@ setup(
     license='GPLv3',
     keywords='git tagging',
     url='https://www.github.com/ambrosys/tgit',
-    packages=['tgit'],
+    packages=['tgit', 'tgit.img', 'tgit.cli'],
+    include_package_data=True,
     install_requires=read('requirements.txt'),
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
