@@ -11,25 +11,32 @@ from .. import Globals
 from ..img import LOGO
 
 
-def addColor( ui_list, color, name, alignRight ):
-    color_normalized = Colors.optimizeForBackground( color )
+def addColor( ui_list, originalColor, optimizedColor, name, alignRight ):
+    color_normalized = Colors.optimizeForBackground( originalColor )
     item = QtWidgets.QTreeWidgetItem( [
         name,
-        color.name(),
+        originalColor.name(),
         name,
-        color_normalized.name()
+        color_normalized.name(),
+        name,
+        optimizedColor.name()
     ] )
     if alignRight:
         item.setTextAlignment( 0, QtCore.Qt.AlignRight )
         item.setTextAlignment( 2, QtCore.Qt.AlignRight )
+        item.setTextAlignment( 4, QtCore.Qt.AlignRight )
     item.setFont( 0, Globals.boldFont )
     item.setFont( 1, Globals.courierFont )
     item.setFont( 2, Globals.boldFont )
     item.setFont( 3, Globals.courierFont )
-    item.setBackground( 0, QtGui.QBrush( color ) )
-    item.setBackground( 1, QtGui.QBrush( color ) )
+    item.setFont( 4, Globals.boldFont )
+    item.setFont( 5, Globals.courierFont )
+    item.setBackground( 0, QtGui.QBrush( originalColor ) )
+    item.setBackground( 1, QtGui.QBrush( originalColor ) )
     item.setBackground( 2, QtGui.QBrush( color_normalized ) )
     item.setBackground( 3, QtGui.QBrush( color_normalized ) )
+    item.setBackground( 4, QtGui.QBrush( optimizedColor ) )
+    item.setBackground( 5, QtGui.QBrush( optimizedColor ) )
     ui_list.addTopLevelItem( item )
 
 def main():
@@ -56,9 +63,11 @@ def main():
         'name',
         'original color',
         'name',
-        'distance to white = 9.0'
+        'd to white = 9.0'
+        'name',
+        'rearranged'
     ] ) )
-    ui_list.setColumnCount( 4 )
+    ui_list.setColumnCount( 6 )
     ui_list.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     ui_list.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
 
@@ -67,10 +76,10 @@ def main():
         for group, authors in Authors.allAuthorsGrouped.items():
             for author in authors:
                 if author in Authors.map_author_originalColor:
-                    addColor( ui_list, Authors.map_author_originalColor[author], author, alignRight=False )
+                    addColor( ui_list, Authors.map_author_originalColor[author], QtGui.QColor(0,0,0), author, alignRight=False )
     ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', ''] ) )
     for i in range( len( Colors.colors ) ):
-        addColor( ui_list, QtGui.QColor( Colors.colors[i] ), str(i + 1), alignRight=True )
+        addColor( ui_list, QtGui.QColor( Colors.colors[i] ), QtGui.QColor(0,0,0), str(i + 1), alignRight=True )
     ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', ''] ) )
 
     ui_window = QtWidgets.QMainWindow()

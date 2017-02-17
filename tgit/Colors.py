@@ -19,6 +19,27 @@ colors = [
     ]
 
 
+class ColorGroup:
+    def __init__( self ):
+        self.colors = {}
+
+    def addColor( self, color ):
+        """
+        :type color: Color
+        """
+        self.colors[color.name] = color
+
+
+class Color:
+    def __init__( self, name, color ):
+        """
+        :type color: QtGui.QColor
+        """
+        self.name = name
+        self.color = color
+
+
+
 def optimizeForBackground( color ):
     return _specificDistanceInLabToReferenceColor( color, QtGui.QColor( 255, 255, 255 ), 9.0 )
 
@@ -32,6 +53,6 @@ def _specificDistanceInLabToReferenceColor( color, referenceColor, distance ):
         rgb[i] = min( 1.0, max( 0.0, rgb[i] ) )
     result = QtGui.QColor()
     result.setRedF( rgb[0] )
-    result.setGreenF(rgb[1] )
+    result.setGreenF( rgb[1] )
     result.setBlueF( rgb[2] )
     return result
