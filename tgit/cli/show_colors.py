@@ -8,6 +8,8 @@ from .. import Colors
 from .. import Authors
 from .. import Globals
 
+from ..img import LOGO
+
 
 def addColor( ui_list, color, name, alignRight ):
     color_normalized = Colors.optimizeForBackground( color )
@@ -38,7 +40,7 @@ def main():
     args = parser.parse_args()
 
     ui_app = QtWidgets.QApplication( [] )
-    ui_app.setWindowIcon( QtGui.QIcon( os.path.join( os.path.dirname( os.path.realpath( __file__ ) ), '../../img/tgit-logo.svg' ) ) )
+    ui_app.setWindowIcon( QtGui.QIcon( LOGO ) )
 
     Globals.initUiGlobals()
 

@@ -6,8 +6,6 @@ This is a simple git GUI for tagging commits.
 
 ### a) pip
 
-**Attention**: Not working yet.
-
 **Note**: GUI style may not look native on Ubuntu,
 because this uses PyQt5 distributed by pip.
 
