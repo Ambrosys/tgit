@@ -63,7 +63,7 @@ def main():
         'name',
         'original color',
         'name',
-        'd to white = 9.0'
+        'd to white = 9.0',
         'name',
         'rearranged'
     ] ) )
@@ -71,16 +71,36 @@ def main():
     ui_list.header().setSectionResizeMode( QtWidgets.QHeaderView.ResizeToContents )
     ui_list.setSelectionMode( QtWidgets.QAbstractItemView.ExtendedSelection )
 
+    # construct color space for optimization
+
+    colorGroup = Colors.ColorGroup()
+
     if Authors.map_author_originalColor:
-        ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', ''] ) )
         for group, authors in Authors.allAuthorsGrouped.items():
             for author in authors:
                 if author in Authors.map_author_originalColor:
-                    addColor( ui_list, Authors.map_author_originalColor[author], QtGui.QColor(0,0,0), author, alignRight=False )
-    ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', ''] ) )
+                    colorGroup.addColor( author, Authors.map_author_originalColor[author] )
     for i in range( len( Colors.colors ) ):
-        addColor( ui_list, QtGui.QColor( Colors.colors[i] ), QtGui.QColor(0,0,0), str(i + 1), alignRight=True )
-    ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', ''] ) )
+        colorGroup.addColor( str(i + 1), QtGui.QColor( Colors.colors[i] ) )
+
+    # optimize
+
+    colorGroup.optimize()
+
+    # use colors to construct gui
+
+    if Authors.map_author_originalColor:
+        ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', '', '', ''] ) )
+        for group, authors in Authors.allAuthorsGrouped.items():
+            for author in authors:
+                if author in Authors.map_author_originalColor:
+                    color = colorGroup.getColor( author )
+                    addColor( ui_list, color.getOriginalColor(), color.getOptimizedColor(), author, alignRight=False )
+    ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', '', '', ''] ) )
+    for i in range( len( Colors.colors ) ):
+        color = colorGroup.getColor( str(i + 1) )
+        addColor( ui_list, color.getOriginalColor(), color.getOptimizedColor(), str(i + 1), alignRight=True )
+    ui_list.addTopLevelItem( QtWidgets.QTreeWidgetItem( ['', '', '', '', '', ''] ) )
 
     ui_window = QtWidgets.QMainWindow()
     ui_window.setWindowTitle( 'Colors' )
